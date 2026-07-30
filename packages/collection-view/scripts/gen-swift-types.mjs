@@ -337,6 +337,27 @@ function synthProperty(property, jsonPath, swiftPath, visiting) {
   const arrayMatch = /^\[(.+)\]$/.exec(property.swift)
   if (arrayMatch) {
     const elementName = arrayMatch[1]
+
+    // An array of primitives — `colors: string[]`, `locations: number[]`. One element is enough:
+    // the assertion proves the array decoded and that its element type is right, which is the only
+    // thing that can drift between TypeScript and Swift.
+    if (elementName === 'String') {
+      const value = `${jsonPath}.${property.name}[0]`
+      assertions.push(
+        `XCTAssertEqual(${chain}.first, ${JSON.stringify(value)})`
+      )
+      return [value]
+    }
+    if (elementName === 'Double' || elementName === 'Int') {
+      const value = ++seed * 11
+      assertions.push(`XCTAssertEqual(${chain}.first, ${value})`)
+      return [value]
+    }
+    if (elementName === 'Bool') {
+      assertions.push(`XCTAssertEqual(${chain}.first, true)`)
+      return [true]
+    }
+
     const element = structsByName.get(elementName)
     if (element == null) {
       throw new Error(

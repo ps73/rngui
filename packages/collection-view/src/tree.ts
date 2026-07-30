@@ -52,6 +52,19 @@ export type RowKind =
   | 'menu'
   /** A `UIDatePicker`, compact or inline. */
   | 'datePicker'
+  /**
+   * A rich stacked cell — a title, a prominent value and a caption.
+   *
+   * The recyclable counterpart to a `Host` row: everything a summary card usually needs, described
+   * rather than rendered, so a list of fifty of them costs fifty pooled cells instead of fifty
+   * React subtrees.
+   */
+  | 'card'
+  /**
+   * A pill in a horizontally scrolling section. Set by the serializer from the *section's* layout
+   * rather than by the caller, so a chip section cannot contain a non-chip row.
+   */
+  | 'chip'
 
 /**
  * Trailing accessory, drawn at the leading edge of the cell's trailing margin.
@@ -137,7 +150,7 @@ export interface RowSpec {
   id: string
   kind: RowKind
   label?: string
-  /** Second line, for `subtitle` rows. */
+  /** Second line, for `subtitle` rows, and the caption of a `card`. */
   secondaryLabel?: string
   /** Trailing detail text, for `value` rows. */
   value?: string
@@ -242,6 +255,8 @@ export interface SectionSpec {
   header?: string
   /** The grey explanatory text drawn under a group. */
   footer?: string
+  /** `list` unless set. `chips` makes the section a horizontally scrolling strip of pills. */
+  layout?: SectionLayout
   /**
    * The letter this section contributes to the A–Z scrubber, when `showsSectionIndex` is on.
    *
@@ -303,6 +318,31 @@ export interface FontSpec {
  */
 export type HeaderBackgroundStyle = 'opaque' | 'blurred' | 'transparent'
 
+/**
+ * How a section arranges its rows.
+ *
+ * `chips` is the one thing compositional layout buys that a `UITableView` simply cannot do: a
+ * horizontally scrolling strip *inside* a vertical list, with its own recycling. Reminders' Details
+ * screen and Health's category pickers are both this.
+ */
+export type SectionLayout = 'list' | 'chips'
+
+/**
+ * A linear gradient behind the content.
+ *
+ * Health's summary screens are the case: a tinted wash behind the cards that a flat `background`
+ * cannot express. Drawn into the collection view's `backgroundView` as a `CAGradientLayer`, so it
+ * scrolls with nothing and costs one layer.
+ */
+export interface GradientSpec {
+  /** Two or more colours, normalised to `#RRGGBBAA` before crossing. */
+  colors: string[]
+  /** Optional stops in `0...1`. Must match `colors` in length, or it is ignored. */
+  locations?: number[]
+  /** Degrees clockwise from top-to-bottom. `0` is vertical, `90` runs left to right. */
+  angle?: number
+}
+
 /** Mirrors `UICollectionLayoutListConfiguration.Appearance`. */
 export type ListAppearance = 'insetGrouped' | 'grouped' | 'plain'
 
@@ -321,6 +361,8 @@ export type ListAppearance = 'insetGrouped' | 'grouped' | 'plain'
 export interface Appearance {
   /** Behind the cells. */
   background?: string
+  /** Behind the cells, drawn over `background`. */
+  backgroundGradient?: GradientSpec
   /** The cell itself — in a grouped style, the rounded card. */
   rowBackground?: string
   separator?: string

@@ -61,6 +61,25 @@ export function normalizeAppearance(
   if (appearance == null) return undefined
 
   const out: Appearance = { ...appearance }
+
+  // The gradient's colours go through the same parser as every other colour, so a caller can write
+  // `['red', 'rgba(0,0,0,.3)']` and have it mean what it looks like.
+  if (appearance.backgroundGradient != null) {
+    const resolved = appearance.backgroundGradient.colors
+      .map(resolveColor)
+      .filter((color): color is string => color != null)
+    // Dropped entirely rather than passed through half-parsed: a one-stop gradient is not a
+    // gradient, and native would draw something arbitrary.
+    if (resolved.length >= 2) {
+      out.backgroundGradient = {
+        ...appearance.backgroundGradient,
+        colors: resolved,
+      }
+    } else {
+      delete out.backgroundGradient
+    }
+  }
+
   for (const key of COLOR_KEYS) {
     const value = appearance[key]
     if (value == null) continue

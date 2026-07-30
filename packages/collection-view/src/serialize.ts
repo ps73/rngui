@@ -9,6 +9,7 @@ import { NODE_TAG } from './internal/tagged'
 import { resolveColor } from './appearance'
 import type {
   ButtonProps,
+  CardProps,
   DatePickerProps,
   DescriptionProps,
   IconProps,
@@ -36,6 +37,7 @@ import type {
  * happened to put first.
  */
 const CONTROL_TAGS = [
+  'card',
   'switch',
   'textField',
   'textArea',
@@ -359,6 +361,17 @@ function serializeControl(
       row.selectable = rowHasPress
       return 'datePicker'
     }
+    case 'card': {
+      const card = props as unknown as CardProps
+      row.label = textOf(childrenOf(element)) ?? row.label
+      if (card.value != null) row.value = card.value
+      if (card.caption != null) row.secondaryLabel = card.caption
+      if (card.systemImage != null) row.systemImage = card.systemImage
+      const color = resolveColor(card.color)
+      if (color != null) row.tintColor = color
+      row.selectable = rowHasPress
+      return 'card'
+    }
     case 'button': {
       const button = props as ButtonProps
       row.label = textOf(childrenOf(element))
@@ -502,6 +515,13 @@ export function serialize(
       if (props.header != null) section.header = props.header
       if (props.footer != null) section.footer = props.footer
       if (props.indexTitle != null) section.indexTitle = props.indexTitle
+      if (props.layout != null) section.layout = props.layout
+      // A chip section's rows *are* chips, whatever they contain. Overriding the inferred kind here
+      // rather than asking the caller to say it twice keeps the section as the single source of
+      // truth for its own layout.
+      if (props.layout === 'chips') {
+        for (const row of section.rows) row.kind = 'chip'
+      }
       sections.push(section)
     } else if (tag != null && ROW_TAGS.has(tag)) {
       loose.push(child)

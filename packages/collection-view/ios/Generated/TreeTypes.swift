@@ -22,6 +22,8 @@ enum RowKind: String, Decodable {
   case button
   case menu
   case datePicker
+  case card
+  case chip
   /// A value this binary does not recognise.
   case unknown
 
@@ -182,6 +184,19 @@ enum HeaderBackgroundStyle: String, Decodable {
   }
 }
 
+/// Generated from `SectionLayout` in tree.ts.
+enum SectionLayout: String, Decodable {
+  case list
+  case chips
+  /// A value this binary does not recognise.
+  case unknown
+
+  init(from decoder: any Decoder) throws {
+    let raw = try decoder.singleValueContainer().decode(String.self)
+    self = SectionLayout(rawValue: raw) ?? .unknown
+  }
+}
+
 /// Generated from `ListAppearance` in tree.ts.
 enum ListAppearance: String, Decodable {
   case insetGrouped
@@ -263,7 +278,7 @@ struct RowSpec: Decodable, Equatable {
   var id: String = ""
   var kind: RowKind = .`default`
   var label: String?
-  /// Second line, for `subtitle` rows.
+  /// Second line, for `subtitle` rows, and the caption of a `card`.
   var secondaryLabel: String?
   /// Trailing detail text, for `value` rows.
   var value: String?
@@ -381,6 +396,8 @@ struct SectionSpec: Decodable, Equatable {
   var header: String?
   /// The grey explanatory text drawn under a group.
   var footer: String?
+  /// `list` unless set. `chips` makes the section a horizontally scrolling strip of pills.
+  var layout: SectionLayout?
   /// The letter this section contributes to the A–Z scrubber, when `showsSectionIndex` is on.
   ///
   /// Separate from `header` because the two genuinely differ: a Contacts header reads `A` but a
@@ -391,7 +408,7 @@ struct SectionSpec: Decodable, Equatable {
   var rows: [RowSpec] = []
 
   private enum CodingKeys: String, CodingKey {
-    case id, header, footer, indexTitle, rows
+    case id, header, footer, layout, indexTitle, rows
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -402,6 +419,7 @@ struct SectionSpec: Decodable, Equatable {
     id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
     header = try container.decodeIfPresent(String.self, forKey: .header)
     footer = try container.decodeIfPresent(String.self, forKey: .footer)
+    layout = try container.decodeIfPresent(SectionLayout.self, forKey: .layout)
     indexTitle = try container.decodeIfPresent(String.self, forKey: .indexTitle)
     rows = try container.decodeIfPresent([RowSpec].self, forKey: .rows) ?? []
   }
@@ -446,6 +464,34 @@ struct FontSpec: Decodable, Equatable {
   }
 }
 
+/// A linear gradient behind the content.
+///
+/// Health's summary screens are the case: a tinted wash behind the cards that a flat `background`
+/// cannot express. Drawn into the collection view's `backgroundView` as a `CAGradientLayer`, so it
+/// scrolls with nothing and costs one layer.
+struct GradientSpec: Decodable, Equatable {
+  /// Two or more colours, normalised to `#RRGGBBAA` before crossing.
+  var colors: [String] = []
+  /// Optional stops in `0...1`. Must match `colors` in length, or it is ignored.
+  var locations: [Double]?
+  /// Degrees clockwise from top-to-bottom. `0` is vertical, `90` runs left to right.
+  var angle: Double?
+
+  private enum CodingKeys: String, CodingKey {
+    case colors, locations, angle
+  }
+
+  /// All defaults. Lets native render an empty list before any tree has arrived.
+  init() {}
+
+  init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    colors = try container.decodeIfPresent([String].self, forKey: .colors) ?? []
+    locations = try container.decodeIfPresent([Double].self, forKey: .locations)
+    angle = try container.decodeIfPresent(Double.self, forKey: .angle)
+  }
+}
+
 /// Colour, spacing and typography overrides.
 ///
 /// Everything is optional and falls back to the platform's own value, so setting one field
@@ -459,6 +505,8 @@ struct FontSpec: Decodable, Equatable {
 struct Appearance: Decodable, Equatable {
   /// Behind the cells.
   var background: String?
+  /// Behind the cells, drawn over `background`.
+  var backgroundGradient: GradientSpec?
   /// The cell itself — in a grouped style, the rounded card.
   var rowBackground: String?
   var separator: String?
@@ -483,7 +531,7 @@ struct Appearance: Decodable, Equatable {
   var footerFont: FontSpec?
 
   private enum CodingKeys: String, CodingKey {
-    case background, rowBackground, separator, labelColor, secondaryLabelColor, headerTextColor, headerBackgroundStyle, footerTextColor, tintColor, sectionSpacing, font, headerFont, footerFont
+    case background, backgroundGradient, rowBackground, separator, labelColor, secondaryLabelColor, headerTextColor, headerBackgroundStyle, footerTextColor, tintColor, sectionSpacing, font, headerFont, footerFont
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -492,6 +540,7 @@ struct Appearance: Decodable, Equatable {
   init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     background = try container.decodeIfPresent(String.self, forKey: .background)
+    backgroundGradient = try container.decodeIfPresent(GradientSpec.self, forKey: .backgroundGradient)
     rowBackground = try container.decodeIfPresent(String.self, forKey: .rowBackground)
     separator = try container.decodeIfPresent(String.self, forKey: .separator)
     labelColor = try container.decodeIfPresent(String.self, forKey: .labelColor)

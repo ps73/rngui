@@ -4,11 +4,12 @@
       "id": "Tree.sections[0].id",
       "header": "Tree.sections[0].header",
       "footer": "Tree.sections[0].footer",
+      "layout": "chips",
       "indexTitle": "Tree.sections[0].indexTitle",
       "rows": [
         {
           "id": "Tree.sections[0].rows[0].id",
-          "kind": "datePicker",
+          "kind": "chip",
           "label": "Tree.sections[0].rows[0].label",
           "secondaryLabel": "Tree.sections[0].rows[0].secondaryLabel",
           "value": "Tree.sections[0].rows[0].value",
@@ -78,6 +79,15 @@
   "listAppearance": "plain",
   "appearance": {
     "background": "Tree.appearance.background",
+    "backgroundGradient": {
+      "colors": [
+        "Tree.appearance.backgroundGradient.colors[0]"
+      ],
+      "locations": [
+        88
+      ],
+      "angle": 99
+    },
     "rowBackground": "Tree.appearance.rowBackground",
     "separator": "Tree.appearance.separator",
     "labelColor": "Tree.appearance.labelColor",
@@ -86,11 +96,11 @@
     "headerBackgroundStyle": "transparent",
     "footerTextColor": "Tree.appearance.footerTextColor",
     "tintColor": "Tree.appearance.tintColor",
-    "sectionSpacing": 88,
+    "sectionSpacing": 110,
     "font": {
       "family": "Tree.appearance.font.family",
       "design": "monospaced",
-      "size": 99,
+      "size": 121,
       "weight": "Tree.appearance.font.weight",
       "variations": "Tree.appearance.font.variations",
       "scaled": true
@@ -98,7 +108,7 @@
     "headerFont": {
       "family": "Tree.appearance.headerFont.family",
       "design": "monospaced",
-      "size": 110,
+      "size": 132,
       "weight": "Tree.appearance.headerFont.weight",
       "variations": "Tree.appearance.headerFont.variations",
       "scaled": true
@@ -106,7 +116,7 @@
     "footerFont": {
       "family": "Tree.appearance.footerFont.family",
       "design": "monospaced",
-      "size": 121,
+      "size": 143,
       "weight": "Tree.appearance.footerFont.weight",
       "variations": "Tree.appearance.footerFont.variations",
       "scaled": true
@@ -114,6 +124,15 @@
   },
   "darkAppearance": {
     "background": "Tree.darkAppearance.background",
+    "backgroundGradient": {
+      "colors": [
+        "Tree.darkAppearance.backgroundGradient.colors[0]"
+      ],
+      "locations": [
+        154
+      ],
+      "angle": 165
+    },
     "rowBackground": "Tree.darkAppearance.rowBackground",
     "separator": "Tree.darkAppearance.separator",
     "labelColor": "Tree.darkAppearance.labelColor",
@@ -122,11 +141,11 @@
     "headerBackgroundStyle": "transparent",
     "footerTextColor": "Tree.darkAppearance.footerTextColor",
     "tintColor": "Tree.darkAppearance.tintColor",
-    "sectionSpacing": 132,
+    "sectionSpacing": 176,
     "font": {
       "family": "Tree.darkAppearance.font.family",
       "design": "monospaced",
-      "size": 143,
+      "size": 187,
       "weight": "Tree.darkAppearance.font.weight",
       "variations": "Tree.darkAppearance.font.variations",
       "scaled": true
@@ -134,7 +153,7 @@
     "headerFont": {
       "family": "Tree.darkAppearance.headerFont.family",
       "design": "monospaced",
-      "size": 154,
+      "size": 198,
       "weight": "Tree.darkAppearance.headerFont.weight",
       "variations": "Tree.darkAppearance.headerFont.variations",
       "scaled": true
@@ -142,7 +161,7 @@
     "footerFont": {
       "family": "Tree.darkAppearance.footerFont.family",
       "design": "monospaced",
-      "size": 165,
+      "size": 209,
       "weight": "Tree.darkAppearance.footerFont.weight",
       "variations": "Tree.darkAppearance.footerFont.variations",
       "scaled": true

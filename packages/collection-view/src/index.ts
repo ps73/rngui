@@ -4,6 +4,7 @@ import {
   Checkbox,
   Checkmark,
   Chevron,
+  Card,
   DatePicker,
   Description,
   Icon,
@@ -33,6 +34,7 @@ export type {
 export type { InheritedAppearance } from './appearance'
 export type {
   ButtonProps,
+  CardProps,
   DatePickerProps,
   DescriptionProps,
   IconProps,
@@ -55,6 +57,8 @@ export type {
   DatePickerStyle,
   FontDesign,
   FontSpec,
+  GradientSpec,
+  SectionLayout,
   HeaderBackgroundStyle,
   KeyboardType,
   ListAppearance,
@@ -113,6 +117,7 @@ export const CollectionView = {
   Spinner,
 
   // Controls
+  Card,
   Switch,
   TextField,
   TextArea,

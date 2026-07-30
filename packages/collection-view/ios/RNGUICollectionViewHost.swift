@@ -72,6 +72,22 @@ public final class RNGUICollectionViewHost: NSObject {
   private var adjustsContentInsets = true
   private var keyboardObserver: KeyboardObserver!
 
+  /**
+   * The gradient behind the content.
+   *
+   * Installed as the collection view's `backgroundView` rather than as a layer on the collection
+   * view itself, because `backgroundView` is the one thing UIKit keeps pinned to the *bounds* while
+   * the content scrolls over it. A layer added to the collection view would scroll with the content
+   * and a layer on the container would be covered by the list's own background colour.
+   */
+  private let gradientLayer = CAGradientLayer()
+  private lazy var gradientView: GradientBackgroundView = {
+    let view = GradientBackgroundView()
+    view.layer.addSublayer(gradientLayer)
+    view.gradient = gradientLayer
+    return view
+  }()
+
   private let sectionIndexBar = SectionIndexBar()
   private var sectionIndexTopConstraint: NSLayoutConstraint!
   private var sectionIndexBottomConstraint: NSLayoutConstraint!
@@ -117,6 +133,8 @@ public final class RNGUICollectionViewHost: NSObject {
     UICollectionView.CellRegistration<TextFieldCell, RowSpec>!
   private var textAreaRegistration: UICollectionView.CellRegistration<TextAreaCell, RowSpec>!
   private var menuRegistration: UICollectionView.CellRegistration<MenuCell, RowSpec>!
+  private var cardRegistration: UICollectionView.CellRegistration<CardCell, RowSpec>!
+  private var chipRegistration: UICollectionView.CellRegistration<ChipCell, RowSpec>!
   // Two date registrations, because a compact pill and an inline calendar must not share a reuse
   // pool — see the note in `DatePickerCell`.
   private var compactDateRegistration:
@@ -217,6 +235,8 @@ public final class RNGUICollectionViewHost: NSObject {
     textFieldRegistration = makeTextFieldRegistration()
     textAreaRegistration = makeTextAreaRegistration()
     menuRegistration = makeMenuRegistration()
+    cardRegistration = makeCardRegistration()
+    chipRegistration = makeChipRegistration()
     compactDateRegistration = makeDateRegistration(compact: true)
     expandedDateRegistration = makeDateRegistration(compact: false)
     headerRegistration = makeBoundaryRegistration(
@@ -294,6 +314,7 @@ public final class RNGUICollectionViewHost: NSObject {
       \.background,
       fallback: defaultBackgroundColor
     )
+    applyBackgroundGradient()
     // `nil` restores inheritance from the window's tint rather than pinning a colour.
     collectionView.tintColor = resolver.optionalColor(\.tintColor)
 
@@ -306,6 +327,28 @@ public final class RNGUICollectionViewHost: NSObject {
     listLayout.configuration = configuration
   }
 
+  /**
+   * Installs or removes the gradient behind the content.
+   *
+   * Colours are resolved against the container's traits rather than handed over as dynamic
+   * `UIColor`s, because `CAGradientLayer.colors` takes `CGColor` — which has no notion of a trait
+   * collection and would freeze whichever mode was current. `GradientBackgroundView` re-resolves
+   * them on a style change for exactly that reason.
+   */
+  private func applyBackgroundGradient() {
+    let spec = resolver.value({ $0.backgroundGradient }, for: container.traitCollection)
+    guard let spec, spec.colors.count >= 2 else {
+      collectionView.backgroundView = nil
+      return
+    }
+
+    gradientView.spec = spec
+    if collectionView.backgroundView !== gradientView {
+      collectionView.backgroundView = gradientView
+    }
+    gradientView.applySpec()
+  }
+
   // MARK: - Layout
 
   private func makeLayout() -> UICollectionViewCompositionalLayout {
@@ -316,11 +359,18 @@ public final class RNGUICollectionViewHost: NSObject {
     UICollectionViewCompositionalLayout { [weak self] index, environment in
       guard let self else { return nil }
 
+      let section = self.sections[safe: index]
+
+      // A horizontally scrolling strip *inside* a vertical list — the one thing compositional
+      // layout does that a `UITableView` cannot. Returned before any list configuration is built,
+      // because a chip section is not a list section at all.
+      if section?.layout == .chips {
+        return self.makeChipSection(for: section, environment: environment)
+      }
+
       var configuration = UICollectionLayoutListConfiguration(
         appearance: self.listConfigurationAppearance
       )
-
-      let section = self.sections[safe: index]
       configuration.headerMode = section?.header != nil ? .supplementary : .none
       configuration.footerMode = section?.footer != nil ? .supplementary : .none
 
@@ -386,6 +436,52 @@ public final class RNGUICollectionViewHost: NSObject {
 
       return layoutSection
     }
+  }
+
+  /**
+   * A chip strip: one estimated-width item per chip, scrolling continuously.
+   *
+   * `.estimated` on the *width* is what makes a chip as wide as its own text — the cell self-sizes
+   * horizontally against the label's intrinsic width, so nothing here has to guess a constant.
+   *
+   * Note this section deliberately never pins its header. `pinToVisibleBounds` combined with
+   * `orthogonalScrollingBehavior` in one layout is a known-flaky pairing, and the guard that keeps
+   * them apart is that pinning is only applied for the `plain` appearance while chips live in
+   * grouped lists. Worth keeping that way rather than relying on it by accident.
+   */
+  private func makeChipSection(
+    for section: SectionSpec?,
+    environment: NSCollectionLayoutEnvironment
+  ) -> NSCollectionLayoutSection {
+    let height: CGFloat = 36
+    let size = NSCollectionLayoutSize(
+      widthDimension: .estimated(90),
+      heightDimension: .absolute(height)
+    )
+    let group = NSCollectionLayoutGroup.horizontal(
+      layoutSize: size,
+      subitems: [NSCollectionLayoutItem(layoutSize: size)]
+    )
+    let layoutSection = NSCollectionLayoutSection(group: group)
+    layoutSection.orthogonalScrollingBehavior = .continuous
+    layoutSection.interGroupSpacing = 8
+    layoutSection.contentInsets = NSDirectionalEdgeInsets(
+      top: 8, leading: 16, bottom: 8, trailing: 16
+    )
+
+    if section?.header != nil {
+      layoutSection.boundarySupplementaryItems = [
+        NSCollectionLayoutBoundarySupplementaryItem(
+          layoutSize: NSCollectionLayoutSize(
+            widthDimension: .fractionalWidth(1),
+            heightDimension: .estimated(32)
+          ),
+          elementKind: UICollectionView.elementKindSectionHeader,
+          alignment: .top
+        )
+      ]
+    }
+    return layoutSection
   }
 
   // MARK: - Cell registrations
@@ -719,6 +815,45 @@ public final class RNGUICollectionViewHost: NSObject {
     }
   }
 
+  private func makeCardRegistration()
+    -> UICollectionView.CellRegistration<CardCell, RowSpec>
+  {
+    UICollectionView.CellRegistration { [weak self] cell, _, row in
+      guard let self else { return }
+      let traits = cell.traitCollection
+      let base = self.rowFont(row, traits: traits)
+      cell.configure(
+        row: row,
+        // Derived from the row's resolved font rather than hard-coded, so a card follows the list's
+        // typeface and Dynamic Type without three more appearance fields.
+        titleFont: .systemFont(ofSize: base.pointSize * 0.82, weight: .semibold),
+        valueFont: .systemFont(ofSize: base.pointSize * 1.9, weight: .bold),
+        captionFont: .systemFont(ofSize: base.pointSize * 0.82, weight: .regular),
+        tint: self.rowTint(row),
+        labelColor: self.resolver.optionalColor(\.labelColor)
+      )
+      self.applyBackground(to: cell, row: row)
+      cell.accessories = self.accessories(for: row)
+    }
+  }
+
+  private func makeChipRegistration()
+    -> UICollectionView.CellRegistration<ChipCell, RowSpec>
+  {
+    UICollectionView.CellRegistration { [weak self] cell, _, row in
+      guard let self else { return }
+      let base = self.rowFont(row, traits: cell.traitCollection)
+      cell.configure(
+        row: row,
+        font: .systemFont(ofSize: base.pointSize * 0.88, weight: .medium),
+        tint: self.rowTint(row),
+        // The unselected pill sits on the list background, so it needs a fill that reads as raised
+        // against it rather than the row background a grouped card would use.
+        unselected: self.resolver.optionalColor(\.rowBackground) ?? .secondarySystemFill
+      )
+    }
+  }
+
   private func makeDateRegistration(
     compact: Bool
   ) -> UICollectionView.CellRegistration<DatePickerCell, RowSpec> {
@@ -967,6 +1102,14 @@ public final class RNGUICollectionViewHost: NSObject {
       case .menu:
         return collectionView.dequeueConfiguredReusableCell(
           using: self.menuRegistration, for: indexPath, item: row
+        )
+      case .card:
+        return collectionView.dequeueConfiguredReusableCell(
+          using: self.cardRegistration, for: indexPath, item: row
+        )
+      case .chip:
+        return collectionView.dequeueConfiguredReusableCell(
+          using: self.chipRegistration, for: indexPath, item: row
         )
       case .datePicker:
         // The style decides the pool, not just the configuration — a compact pill and an inline

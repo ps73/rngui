@@ -1,12 +1,166 @@
-import { BaselineList } from '../../../src/components/BaselineList'
+import { useState } from 'react'
+import { View } from 'react-native'
+import { CollectionView } from '@rngui/collection-view'
+import { StyleSheet } from 'react-native-unistyles'
 
 /**
  * Target: the Apple Health "Mental Wellbeing" screen.
  *
- * The custom-content showcase: large cards built from the native content DSL (so they
- * still recycle) alongside a `CollectionView.Host` row holding a real chart, over a
- * tinted gradient background.
+ * The screen where compositional layout earns its keep, and where the two ways of putting rich
+ * content in a list sit side by side so the trade is visible:
+ *
+ * - **`Card` rows recycle.** They are described by a `RowSpec`, so the eight here cost however many
+ *   cells fit on screen, not eight. Anything that repeats should be one of these.
+ * - **The `Host` row does not.** It is a real React subtree, which is the right answer exactly once
+ *   — for the chart, which is genuinely one of a kind.
+ *
+ * The chip strip is the thing a `UITableView` simply cannot do: a horizontally scrolling section
+ * *inside* a vertical list, with its own reuse pool.
  */
+const RANGES = [
+  { id: 'day', title: 'Day', systemImage: 'sun.max' },
+  { id: 'week', title: 'Week', systemImage: 'calendar' },
+  { id: 'month', title: 'Month', systemImage: 'calendar.badge.clock' },
+  { id: 'sixmonths', title: '6 Months' },
+  { id: 'year', title: 'Year' },
+]
+
+const TEAL = '#0FA3A3'
+
 export default function HealthScreen() {
-  return <BaselineList rows={20} />
+  const [range, setRange] = useState('week')
+
+  return (
+    <CollectionView.Root
+      appearance={{
+        tintColor: TEAL,
+        headerTextColor: TEAL,
+        // A wash rather than a flat fill — the case a single `background` colour cannot express.
+        // Drawn into the collection view's backgroundView as one CAGradientLayer.
+        backgroundGradient: {
+          colors: ['#D8F3F1', '#F2F2F7'],
+          locations: [0, 0.55],
+        },
+      }}
+      darkAppearance={{
+        tintColor: '#5AC8C8',
+        headerTextColor: '#5AC8C8',
+        backgroundGradient: {
+          colors: ['#0B3A3A', '#000000'],
+          locations: [0, 0.55],
+        },
+      }}
+    >
+      <CollectionView.Section id="range" layout="chips">
+        {RANGES.map((option) => (
+          <CollectionView.Row
+            key={option.id}
+            id={`range-${option.id}`}
+            onPress={() => setRange(option.id)}
+          >
+            {option.systemImage != null && (
+              <CollectionView.Icon systemImage={option.systemImage} />
+            )}
+            <CollectionView.Label>{option.title}</CollectionView.Label>
+            <CollectionView.Checkbox value={range === option.id} />
+          </CollectionView.Row>
+        ))}
+      </CollectionView.Section>
+
+      <CollectionView.Section
+        id="highlights"
+        header="Highlights"
+        footer="Every card here is a recycled cell described by a RowSpec — not a React subtree. That is the difference between eight cards and eight live component trees."
+      >
+        <CollectionView.Row id="state-of-mind">
+          <CollectionView.Card
+            systemImage="brain.head.profile"
+            value="Slightly Pleasant"
+            caption="Your mood has trended more pleasant this week than last."
+          >
+            State of Mind
+          </CollectionView.Card>
+        </CollectionView.Row>
+        <CollectionView.Row id="mindful">
+          <CollectionView.Card
+            systemImage="figure.mind.and.body"
+            value="42 min"
+            caption="Mindful minutes, up 12 from last week."
+          >
+            Mindful Minutes
+          </CollectionView.Card>
+        </CollectionView.Row>
+        <CollectionView.Row id="daylight">
+          <CollectionView.Card
+            systemImage="sun.horizon"
+            value="1 h 18 min"
+            caption="Daily average time in daylight."
+          >
+            Time in Daylight
+          </CollectionView.Card>
+        </CollectionView.Row>
+      </CollectionView.Section>
+
+      <CollectionView.Section
+        id="chart"
+        header="This Week"
+        footer="A Host row: a real React Native view reparented into the cell. Correct for a chart, which is one of a kind — and the wrong tool for the cards above, which repeat."
+      >
+        <CollectionView.Host id="chart-host" height={160}>
+          <Chart />
+        </CollectionView.Host>
+      </CollectionView.Section>
+
+      <CollectionView.Section id="more" header="More">
+        <CollectionView.Row id="symptoms" onPress={() => {}}>
+          <CollectionView.Icon systemImage="list.bullet.clipboard" />
+          <CollectionView.Label>Symptoms</CollectionView.Label>
+          <CollectionView.Chevron />
+        </CollectionView.Row>
+        <CollectionView.Row id="articles" onPress={() => {}}>
+          <CollectionView.Icon systemImage="book" />
+          <CollectionView.Label>Articles</CollectionView.Label>
+          <CollectionView.Chevron />
+        </CollectionView.Row>
+      </CollectionView.Section>
+    </CollectionView.Root>
+  )
 }
+
+/**
+ * A deliberately plain bar chart — plain React Native views.
+ *
+ * The point is not the chart but where it lives: reparented into a `UICollectionViewCell`, clipped
+ * and scrolled by UIKit, with no floating overlay and no per-frame repositioning.
+ */
+const BARS = [0.35, 0.6, 0.45, 0.8, 0.55, 0.9, 0.7]
+
+function Chart() {
+  return (
+    <View style={styles.chart}>
+      {BARS.map((height, index) => (
+        <View
+          key={index}
+          style={[styles.bar, { height: `${height * 100}%` }]}
+        />
+      ))}
+    </View>
+  )
+}
+
+const styles = StyleSheet.create({
+  chart: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  bar: {
+    flex: 1,
+    marginHorizontal: 4,
+    borderRadius: 6,
+    backgroundColor: TEAL,
+  },
+})

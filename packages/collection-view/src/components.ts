@@ -2,6 +2,7 @@ import { tagged, type Children } from './internal/tagged'
 import type {
   AutoCapitalize,
   FontSpec,
+  SectionLayout,
   ButtonRole,
   DatePickerMode,
   DatePickerStyle,
@@ -31,6 +32,13 @@ export interface SectionProps extends Children {
    * scrubber, so a list can mix indexed and unindexed sections.
    */
   indexTitle?: string
+  /**
+   * `chips` turns the section into a horizontally scrolling strip of pills.
+   *
+   * Its rows become chips regardless of what they contain, which is deliberate — a chip strip with
+   * one stray list row in it is never what anyone meant.
+   */
+  layout?: SectionLayout
 }
 export const Section = tagged<SectionProps>('section', 'CollectionView.Section')
 
@@ -247,6 +255,26 @@ export const DatePicker = tagged<DatePickerProps>(
   'datePicker',
   'CollectionView.DatePicker'
 )
+
+export interface CardProps extends Children {
+  /** The prominent line. */
+  value?: string
+  /** Small text under the value. */
+  caption?: string
+  /** SF Symbol drawn beside the title. */
+  systemImage?: string
+  /** Tints the title and the symbol. */
+  color?: string
+}
+
+/**
+ * A rich stacked cell: a title, a prominent value, a caption.
+ *
+ * The recyclable counterpart to `Host`. Anything a summary card usually needs is *described* here
+ * rather than rendered, so a list of them costs pooled cells instead of React subtrees — which is
+ * the whole reason to prefer it whenever the content repeats.
+ */
+export const Card = tagged<CardProps>('card', 'CollectionView.Card')
 
 export interface ButtonProps extends Children {
   /** `destructive` is red; `plain` drops the tint for a neutral action. */
