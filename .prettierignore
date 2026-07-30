@@ -1,0 +1,13 @@
+# Generated from src/tree.ts. Prettier and the generator would otherwise disagree about the
+# fixture's formatting forever: `npm run verify` fails when the file differs from what the
+# generator emits, and `prettier --check` fails when it differs from what Prettier wants.
+packages/*/ios/Generated/
+packages/*/ios/Tests/
+
+# Build output
+lib/
+.build/
+apps/*/ios/
+apps/*/android/
+apps/*/.expo/
+package-lock.json
