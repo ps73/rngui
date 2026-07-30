@@ -1,0 +1,23 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "lib": ["esnext", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "target": "esnext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    // Metro resolves the workspace packages through their `source` / `react-native` fields,
+    // but TypeScript only looks at `types` / `main` — which point into `lib/`, and `lib/` is
+    // a build artifact that does not exist during development. Mapping the paths to source
+    // keeps the editor and `tsc` honest without anyone having to run a build first.
+    "paths": {
+      "@rngui/collection-view": ["../../packages/collection-view/src/index"]
+    }
+  },
+  "include": ["app/**/*", "src/**/*", "*.js", "*.ts"]
+}
