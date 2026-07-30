@@ -59,6 +59,19 @@ public final class RNGUICollectionViewHost: NSObject {
   @objc public var onMenuSelect: ((String, String) -> Void)?
   @objc public var onSwipeAction: ((String, String) -> Void)?
 
+  // MARK: Insets and keyboard
+
+  /// What the caller asked for, kept apart from what is currently applied. The keyboard path needs
+  /// `max(overlap, base.bottom)` and must never shrink the list below the caller's own inset.
+  private var baseContentInset: UIEdgeInsets = .zero
+  private var keyboardOverlap: CGFloat = 0
+  private var adjustsKeyboardInsets = false
+  private var keyboardAware = false
+  private var keyboardAwareOffset: CGFloat = 0
+  private var insetBehavior: UIScrollView.ContentInsetAdjustmentBehavior = .automatic
+  private var adjustsContentInsets = true
+  private var keyboardObserver: KeyboardObserver!
+
   private let sectionIndexBar = SectionIndexBar()
   private var sectionIndexTopConstraint: NSLayoutConstraint!
   private var sectionIndexBottomConstraint: NSLayoutConstraint!
@@ -138,9 +151,16 @@ public final class RNGUICollectionViewHost: NSObject {
       collectionView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
     ])
 
-    // Lets UIKit fold the navigation bar and tab bar into `adjustedContentInset`. Becomes driven
-    // by the `contentInsetAdjustmentBehavior` prop once the inset work lands.
+    // Lets UIKit fold the navigation bar and tab bar into `adjustedContentInset`. Driven by
+    // `contentInsetAdjustmentBehavior`, whose default is `automatic` rather than `ScrollView`'s
+    // `never` — see the note on the prop.
     collectionView.contentInsetAdjustmentBehavior = .automatic
+    collectionView.keyboardDismissMode = .interactive
+
+    keyboardObserver = KeyboardObserver(scrollView: collectionView)
+    keyboardObserver.onChange = { [weak self] overlap, duration, options in
+      self?.applyKeyboardOverlap(overlap, duration: duration, options: options)
+    }
 
     // Needed for scroll tracking, and it is what selection and swipe actions hang off.
     collectionView.delegate = self
@@ -634,7 +654,10 @@ public final class RNGUICollectionViewHost: NSObject {
 
       let rowId = row.id
       cell.onChange = { [weak self] text in self?.onTextChange?(rowId, text) }
-      cell.onFocusChange = { [weak self] focused in self?.onFocusChange?(rowId, focused) }
+      cell.onFocusChange = { [weak self] focused in
+        self?.onFocusChange?(rowId, focused)
+        self?.focusDidChange(focused)
+      }
     }
   }
 
@@ -654,7 +677,10 @@ public final class RNGUICollectionViewHost: NSObject {
 
       let rowId = row.id
       cell.onChange = { [weak self] text in self?.onTextChange?(rowId, text) }
-      cell.onFocusChange = { [weak self] focused in self?.onFocusChange?(rowId, focused) }
+      cell.onFocusChange = { [weak self] focused in
+        self?.onFocusChange?(rowId, focused)
+        self?.focusDidChange(focused)
+      }
       // Auto Layout re-measures the cell on its own, but the layout keeps the height it already
       // computed — so without this the text runs past the cell's bottom edge as it grows.
       cell.onHeightChange = { [weak self] in
@@ -1061,6 +1087,139 @@ public final class RNGUICollectionViewHost: NSObject {
 
   @objc public func setSectionIndexShowsCallout(_ shows: Bool) {
     sectionIndexBar.showsCallout = shows
+  }
+
+  // MARK: - Insets
+
+  @objc public func setContentInset(_ inset: UIEdgeInsets) {
+    guard baseContentInset != inset else { return }
+    baseContentInset = inset
+    applyContentInset()
+  }
+
+  /// `0`–`3`, in the order the spec's enum declares them. An integer rather than a string because
+  /// this one maps directly onto a `UIScrollView` enum with the same shape.
+  @objc public func setContentInsetAdjustmentBehavior(_ raw: Int) {
+    switch raw {
+    case 1: insetBehavior = .scrollableAxes
+    case 2: insetBehavior = .never
+    case 3: insetBehavior = .always
+    default: insetBehavior = .automatic
+    }
+    applyInsetBehavior()
+  }
+
+  @objc public func setAutomaticallyAdjustContentInsets(_ adjusts: Bool) {
+    guard adjustsContentInsets != adjusts else { return }
+    adjustsContentInsets = adjusts
+    applyInsetBehavior()
+  }
+
+  @objc public func setAutomaticallyAdjustsScrollIndicatorInsets(_ adjusts: Bool) {
+    collectionView.automaticallyAdjustsScrollIndicatorInsets = adjusts
+  }
+
+  /// `automaticallyAdjustContentInsets: false` wins, because it is the coarser switch — a caller
+  /// who turns adjustment off entirely means it regardless of the finer setting alongside it.
+  private func applyInsetBehavior() {
+    collectionView.contentInsetAdjustmentBehavior =
+      adjustsContentInsets ? insetBehavior : .never
+  }
+
+  private func applyContentInset() {
+    var inset = baseContentInset
+    // Never *shrinks* below what the caller asked for — the keyboard adds room, it does not
+    // replace the caller's own bottom inset.
+    inset.bottom = max(baseContentInset.bottom, keyboardOverlap)
+    collectionView.contentInset = inset
+
+    // Left alone when UIKit is managing them, or the assignment fights `automaticallyAdjusts…`
+    // and the indicator ends up inset twice.
+    if !collectionView.automaticallyAdjustsScrollIndicatorInsets {
+      collectionView.verticalScrollIndicatorInsets.bottom = inset.bottom
+    }
+  }
+
+  // MARK: - Keyboard
+
+  @objc public func setAutomaticallyAdjustKeyboardInsets(_ adjusts: Bool) {
+    adjustsKeyboardInsets = adjusts
+  }
+
+  @objc public func setKeyboardAware(_ aware: Bool) {
+    keyboardAware = aware
+  }
+
+  @objc public func setKeyboardAwareOffset(_ offset: CGFloat) {
+    keyboardAwareOffset = offset
+  }
+
+  @objc public func setKeyboardDismissMode(_ raw: Int) {
+    switch raw {
+    case 1: collectionView.keyboardDismissMode = .onDrag
+    case 2: collectionView.keyboardDismissMode = .interactive
+    default: collectionView.keyboardDismissMode = .none
+    }
+  }
+
+  private func applyKeyboardOverlap(
+    _ overlap: CGFloat,
+    duration: TimeInterval,
+    options: UIView.AnimationOptions
+  ) {
+    guard adjustsKeyboardInsets || keyboardAware else { return }
+    guard keyboardOverlap != overlap else { return }
+    keyboardOverlap = overlap
+
+    UIView.animate(withDuration: duration, delay: 0, options: options) {
+      self.applyContentInset()
+      // Inside the same animation block on purpose: the inset and the scroll have to move together
+      // or the focused row visibly slides twice.
+      if self.keyboardAware, overlap > 0 {
+        self.scrollFocusedInputIntoView(animated: false)
+      }
+    }
+  }
+
+  /**
+   * Scrolls the focused field into view, preferring the **caret** to the row.
+   *
+   * The difference matters for a text area that has grown: centring the row puts a tall cell's
+   * midpoint on screen, which can leave the line actually being typed underneath the keyboard.
+   * `UITextInput.caretRect(for:)` is what gives the real target.
+   *
+   * Also called when focus moves between fields with the keyboard already up — a case
+   * `keyboardWillChangeFrame` never fires for, so nothing else would notice.
+   */
+  /**
+   * Re-scrolls when focus moves between fields with the keyboard already up.
+   *
+   * `keyboardWillChangeFrame` does not fire for that — the keyboard never moves — so without this
+   * hook, tabbing from a field near the top to one behind the keyboard leaves the caret hidden.
+   * Deferred a turn so the new responder's caret rect is valid; asking during the transition
+   * returns the *old* field's geometry.
+   */
+  private func focusDidChange(_ focused: Bool) {
+    guard focused, keyboardAware, keyboardOverlap > 0 else { return }
+    Task { @MainActor [weak self] in
+      self?.scrollFocusedInputIntoView(animated: true)
+    }
+  }
+
+  func scrollFocusedInputIntoView(animated: Bool) {
+    guard keyboardAware, let responder = collectionView.rnguiFindFirstResponder() else { return }
+
+    var target: CGRect
+    if let input = responder as? UITextInput, let range = input.selectedTextRange {
+      target = responder.convert(input.caretRect(for: range.end), to: collectionView)
+    } else {
+      target = responder.convert(responder.bounds, to: collectionView)
+    }
+    // Guards against a zero-height caret rect on an empty field, which would scroll to a point and
+    // leave the row flush against the keyboard.
+    target = target.insetBy(dx: 0, dy: -(keyboardAwareOffset + 8))
+
+    collectionView.scrollRectToVisible(target, animated: animated)
   }
 
   @objc public func setShowsVerticalScrollIndicator(_ shows: Bool) {

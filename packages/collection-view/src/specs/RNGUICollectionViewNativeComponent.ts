@@ -105,6 +105,87 @@ export interface NativeProps extends ViewProps {
    */
   showsVerticalScrollIndicator?: WithDefault<boolean, true>
 
+  // -------------------------------------------------------------------------
+  // Insets
+  //
+  // Named as `ScrollView` names them, because these *are* the `UIScrollView` properties and a
+  // familiar name is worth more than a tidier one.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Extra inset around the content, as four scalars.
+   *
+   * `Root` takes a `contentInset` object and unpacks it here, because codegen cannot be given the
+   * `EdgeInsetsValue` primitive from TypeScript: it matches that name only on an *unresolved*
+   * annotation, and React Native exports the type from Flow alone — so a local alias is inlined
+   * and the parser then rejects the plain `number` members. Four floats cost nothing and the public
+   * API keeps the shape people expect.
+   *
+   * Kept separately from the resolved inset natively, because the keyboard path computes
+   * `max(keyboardOverlap, contentInsetBottom)` and must never shrink the list below what the
+   * caller asked for.
+   */
+  contentInsetTop?: Float
+  contentInsetLeft?: Float
+  contentInsetBottom?: Float
+  contentInsetRight?: Float
+
+  /**
+   * How UIKit folds the surrounding chrome into the content inset.
+   *
+   * **Defaults to `automatic`, which diverges from `ScrollView`'s `never`.** That default is
+   * deliberate: this control is normally a screen's only scroll view under a native stack, and
+   * with `never` the content starts underneath the navigation bar and the large title has nothing
+   * to collapse against. React Native gets away with `never` because react-native-screens forces
+   * `automatic` on the scroll view it discovers; nothing forces it on ours, so the useful default
+   * has to be the one that is set here.
+   */
+  contentInsetAdjustmentBehavior?: WithDefault<
+    'automatic' | 'scrollableAxes' | 'never' | 'always',
+    'automatic'
+  >
+
+  /**
+   * Sugar over the above: `false` pins the behaviour to `never`.
+   *
+   * Worth knowing that this prop is a **no-op on Fabric's own `ScrollView`** —
+   * `RCTScrollViewComponentView.mm` has its `MAP_SCROLL_VIEW_PROP` line commented out — so "behaves
+   * exactly like ScrollView" is ambiguous here. It is implemented to what React Native *documents*
+   * rather than to what it currently does, and `contentInsetAdjustmentBehavior` is the precise
+   * control when the two disagree.
+   */
+  automaticallyAdjustContentInsets?: WithDefault<boolean, true>
+
+  /** Whether the scroll indicators inset themselves along with the content. */
+  automaticallyAdjustsScrollIndicatorInsets?: WithDefault<boolean, true>
+
+  // -------------------------------------------------------------------------
+  // Keyboard
+  // -------------------------------------------------------------------------
+
+  /**
+   * Grows the bottom inset by however much the keyboard covers this list.
+   *
+   * The overlap is computed from the list's own geometry in window space rather than from the
+   * screen height, which is what makes it correct inside a form sheet or a bottom sheet — there
+   * the list's bottom edge and the screen's are nowhere near each other.
+   */
+  automaticallyAdjustKeyboardInsets?: WithDefault<boolean, false>
+
+  /**
+   * A superset of the above: also scrolls the focused row above the keyboard, and keeps it there
+   * when focus moves between fields with the keyboard already up.
+   */
+  keyboardAware?: WithDefault<boolean, false>
+
+  /** Extra breathing room above the focused row, in points. */
+  keyboardAwareOffset?: Float
+
+  keyboardDismissMode?: WithDefault<
+    'none' | 'onDrag' | 'interactive',
+    'interactive'
+  >
+
   /**
    * Whether native should report the visible row range at all.
    *

@@ -251,6 +251,50 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
     [_host setShowsVerticalScrollIndicator:newViewProps.showsVerticalScrollIndicator];
   }
 
+  if (oldViewProps.contentInsetTop != newViewProps.contentInsetTop ||
+      oldViewProps.contentInsetLeft != newViewProps.contentInsetLeft ||
+      oldViewProps.contentInsetBottom != newViewProps.contentInsetBottom ||
+      oldViewProps.contentInsetRight != newViewProps.contentInsetRight) {
+    [_host setContentInset:UIEdgeInsetsMake(
+                               newViewProps.contentInsetTop,
+                               newViewProps.contentInsetLeft,
+                               newViewProps.contentInsetBottom,
+                               newViewProps.contentInsetRight)];
+  }
+
+  // The generated enums are declared in the order the spec lists them, so the raw value carries
+  // across as an integer rather than needing a string table on both sides — unlike `colorScheme`,
+  // where the Swift side switches on a readable name because there is no matching UIKit enum.
+  if (oldViewProps.contentInsetAdjustmentBehavior != newViewProps.contentInsetAdjustmentBehavior) {
+    [_host setContentInsetAdjustmentBehavior:(NSInteger)newViewProps.contentInsetAdjustmentBehavior];
+  }
+
+  if (oldViewProps.automaticallyAdjustContentInsets != newViewProps.automaticallyAdjustContentInsets) {
+    [_host setAutomaticallyAdjustContentInsets:newViewProps.automaticallyAdjustContentInsets];
+  }
+
+  if (oldViewProps.automaticallyAdjustsScrollIndicatorInsets !=
+      newViewProps.automaticallyAdjustsScrollIndicatorInsets) {
+    [_host setAutomaticallyAdjustsScrollIndicatorInsets:
+               newViewProps.automaticallyAdjustsScrollIndicatorInsets];
+  }
+
+  if (oldViewProps.automaticallyAdjustKeyboardInsets != newViewProps.automaticallyAdjustKeyboardInsets) {
+    [_host setAutomaticallyAdjustKeyboardInsets:newViewProps.automaticallyAdjustKeyboardInsets];
+  }
+
+  if (oldViewProps.keyboardAware != newViewProps.keyboardAware) {
+    [_host setKeyboardAware:newViewProps.keyboardAware];
+  }
+
+  if (oldViewProps.keyboardAwareOffset != newViewProps.keyboardAwareOffset) {
+    [_host setKeyboardAwareOffset:newViewProps.keyboardAwareOffset];
+  }
+
+  if (oldViewProps.keyboardDismissMode != newViewProps.keyboardDismissMode) {
+    [_host setKeyboardDismissMode:(NSInteger)newViewProps.keyboardDismissMode];
+  }
+
   // JS sends this from whether an `onVisibleRangeChange` callback was passed. Fabric always
   // installs an event emitter and there is no way to ask whether anything is listening, so
   // without being told, the list would post an event on every run-loop turn of every scroll for

@@ -94,6 +94,54 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
   showsVerticalScrollIndicator?: boolean
 
   /**
+   * Extra inset around the content, on top of whatever UIKit adjusts for.
+   *
+   * The keyboard adds to this rather than replacing it, so a list with a bottom inset for a
+   * floating button keeps that room when the keyboard appears.
+   */
+  contentInset?: {
+    top?: number
+    left?: number
+    bottom?: number
+    right?: number
+  }
+
+  /**
+   * How UIKit folds the surrounding chrome into the content inset.
+   *
+   * Defaults to `automatic`, which diverges from `ScrollView`'s `never` — under a native stack
+   * this is normally the screen's only scroll view, and `never` leaves the content starting behind
+   * the navigation bar with nothing for the large title to collapse against.
+   */
+  contentInsetAdjustmentBehavior?:
+    'automatic' | 'scrollableAxes' | 'never' | 'always'
+
+  /** `false` pins the behaviour above to `never`. */
+  automaticallyAdjustContentInsets?: boolean
+
+  automaticallyAdjustsScrollIndicatorInsets?: boolean
+
+  /**
+   * Grows the bottom inset by however much the keyboard covers *this list*.
+   *
+   * Measured from the list's own geometry rather than the screen height, so it stays correct
+   * inside a form sheet or a bottom sheet.
+   */
+  automaticallyAdjustKeyboardInsets?: boolean
+
+  /**
+   * A superset of `automaticallyAdjustKeyboardInsets`: also scrolls the focused field above the
+   * keyboard, targeting the **caret** rather than the row — which is the difference between seeing
+   * the line you are typing and seeing the middle of a tall text area.
+   */
+  keyboardAware?: boolean
+
+  /** Extra breathing room above the focused field, in points. */
+  keyboardAwareOffset?: number
+
+  keyboardDismissMode?: 'none' | 'onDrag' | 'interactive'
+
+  /**
    * Reports which rows are on screen, so `Host` children can be windowed.
    *
    * Needed only for lists of hosted rows: those are real React subtrees and cannot be recycled,
@@ -152,6 +200,14 @@ export function Root({
   colorScheme,
   sectionIndex,
   showsVerticalScrollIndicator = true,
+  contentInset,
+  contentInsetAdjustmentBehavior,
+  automaticallyAdjustContentInsets,
+  automaticallyAdjustsScrollIndicatorInsets,
+  automaticallyAdjustKeyboardInsets,
+  keyboardAware,
+  keyboardAwareOffset,
+  keyboardDismissMode,
   onVisibleRangeChange,
   children,
   ...rest
@@ -283,6 +339,19 @@ export function Root({
           typeof sectionIndex === 'object' ? (sectionIndex.rowHeight ?? 0) : 0
         }
         showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+        contentInsetTop={contentInset?.top ?? 0}
+        contentInsetLeft={contentInset?.left ?? 0}
+        contentInsetBottom={contentInset?.bottom ?? 0}
+        contentInsetRight={contentInset?.right ?? 0}
+        contentInsetAdjustmentBehavior={contentInsetAdjustmentBehavior}
+        automaticallyAdjustContentInsets={automaticallyAdjustContentInsets}
+        automaticallyAdjustsScrollIndicatorInsets={
+          automaticallyAdjustsScrollIndicatorInsets
+        }
+        automaticallyAdjustKeyboardInsets={automaticallyAdjustKeyboardInsets}
+        keyboardAware={keyboardAware}
+        keyboardAwareOffset={keyboardAwareOffset}
+        keyboardDismissMode={keyboardDismissMode}
         sectionIndexShowsCallout={
           typeof sectionIndex === 'object'
             ? sectionIndex.callout !== false

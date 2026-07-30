@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { router } from 'expo-router'
 import { CollectionView, type MenuItemSpec } from '@rngui/collection-view'
 
 /**
@@ -84,6 +85,7 @@ export default function RemindersScreen() {
   const [flagged, setFlagged] = useState(false)
   const [list, setList] = useState('reminders')
   const [subtasks, setSubtasks] = useState(INITIAL_SUBTASKS)
+  const [tail, setTail] = useState('')
 
   const toggleSubtask = useCallback((id: string, done: boolean) => {
     setSubtasks((current) =>
@@ -120,7 +122,9 @@ export default function RemindersScreen() {
   }, [])
 
   return (
-    <CollectionView.Root>
+    // `keyboardAware` is the whole point of this screen now that it has three text rows: without
+    // it, focusing the URL field puts the caret behind the keyboard with no inset and no scroll.
+    <CollectionView.Root keyboardAware keyboardAwareOffset={12}>
       <CollectionView.Section id="entry">
         {/*
           A `TextArea` rather than a `TextField`, because the real title wraps to a second line —
@@ -301,7 +305,32 @@ export default function RemindersScreen() {
         ))}
       </CollectionView.Section>
 
-      <CollectionView.Section id="actions">
+      <CollectionView.Section
+        id="keyboard"
+        header="Keyboard"
+        footer="This field sits at the very end of a long list on purpose — it is the case keyboardAware exists for. Focusing it while the keyboard is closed puts it straight behind the keyboard, so the list has to inset itself and scroll the caret back into view."
+      >
+        <CollectionView.Row id="tail">
+          <CollectionView.TextField
+            placeholder="A field at the end of the list"
+            value={tail}
+            onChangeText={setTail}
+          />
+        </CollectionView.Row>
+      </CollectionView.Section>
+
+      <CollectionView.Section
+        id="actions"
+        footer="The sheet presents this same list inside a UIKit form sheet — the case where keyboard insets measured against the screen rather than the list go wrong."
+      >
+        <CollectionView.Row
+          id="present-sheet"
+          onPress={() => router.push('/reminders/new')}
+        >
+          <CollectionView.Icon systemImage="square.and.pencil" />
+          <CollectionView.Label>New Reminder in a sheet</CollectionView.Label>
+          <CollectionView.Chevron />
+        </CollectionView.Row>
         <CollectionView.Row id="reset">
           <CollectionView.Button role="destructive" onPress={reset}>
             Delete Reminder
