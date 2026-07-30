@@ -1,0 +1,79 @@
+{
+  "name": "@rngui/collection-view",
+  "version": "0.0.0",
+  "description": "A real iOS UICollectionView for React Native, with a Radix-style compound API.",
+  "license": "AGPL-3.0-only",
+  "author": "Phil <phil.schaffarzyk@gmail.com>",
+  "homepage": "https://github.com/ps73/rngui/tree/main/packages/collection-view",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ps73/rngui.git",
+    "directory": "packages/collection-view"
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "uicollectionview",
+    "list",
+    "fabric"
+  ],
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/typescript/src/index.d.ts",
+  "react-native": "src/index",
+  "source": "src/index",
+  "files": [
+    "src",
+    "lib",
+    "ios",
+    "android/src",
+    "android/build.gradle",
+    "android/gradle.properties",
+    "*.podspec",
+    "react-native.config.js",
+    "!**/__tests__",
+    "!ios/Tests",
+    "!**/.*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bob build",
+    "gen:swift-types": "node scripts/gen-swift-types.mjs",
+    "test": "swift test",
+    "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests"
+  },
+  "codegenConfig": {
+    "name": "RNGUICollectionView",
+    "type": "all",
+    "jsSrcsDir": "./src/specs",
+    "android": {
+      "javaPackageName": "com.rngui.collectionview"
+    },
+    "ios": {
+      "componentProvider": {
+        "RNGUICollectionView": "RNGUICollectionViewComponentView"
+      }
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.json"
+        }
+      ]
+    ]
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
