@@ -11,6 +11,7 @@
     "android": "expo run:android"
   },
   "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native/normalize-colors": "^0.86.0",
     "@rngui/collection-view": "*",
     "expo": "~57.0.8",

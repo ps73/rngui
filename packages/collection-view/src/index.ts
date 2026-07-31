@@ -26,8 +26,10 @@ import {
 export { resolveColor, useCollectionViewAppearance } from './appearance'
 
 export type {
+  CollectionViewInstance,
   ColorScheme,
   RootProps,
+  ScrollMetrics,
   SectionIndexOptions,
   VisibleRange,
 } from './CollectionView'

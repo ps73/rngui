@@ -61,7 +61,7 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
  * *name*, via `NSClassFromString(@"RNGUICollectionViewComponentView")` in the generated
  * `RCTThirdPartyComponentsProvider.mm`.
  */
-@interface RNGUICollectionViewComponentView : RCTViewComponentView
+@interface RNGUICollectionViewComponentView : RCTViewComponentView <RCTRNGUICollectionViewViewProtocol>
 @end
 
 @implementation RNGUICollectionViewComponentView {
@@ -195,6 +195,43 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
       });
     };
 
+    /**
+     * The five scroll events.
+     *
+     * Codegen gives every event its own set of nested payload structs — `OnScrollContentOffset`,
+     * `OnScrollBeginDragContentOffset`, and so on — with no shared type between them even though
+     * the five shapes are identical. None of those names appear below only because C++20 deduces
+     * a nested aggregate's type from the field it initialises; without that this would be five
+     * near-copies of the same fifteen lines. The alternative — one Swift block with a kind
+     * discriminator — would put an integer table on each side of this boundary to drift apart.
+     */
+#define RNGUI_SCROLL_EMITTER(eventName)                                                       \
+  ^(CGPoint offset, CGSize contentSize, CGSize viewport, UIEdgeInsets inset) {                \
+    RNGUI_EMITTER(emitter)                                                                    \
+    emitter->eventName({                                                                      \
+        .contentOffset = {.x = offset.x, .y = offset.y},                                      \
+        .contentSize = {.width = contentSize.width, .height = contentSize.height},            \
+        .layoutMeasurement = {.width = viewport.width, .height = viewport.height},            \
+        .contentInset =                                                                       \
+            {.top = inset.top, .left = inset.left, .bottom = inset.bottom, .right = inset.right}, \
+        /* A collection view never zooms, so this is the only value it could ever have. */    \
+        .zoomScale = 1,                                                                       \
+    });                                                                                       \
+  }
+
+    _host.onScroll = RNGUI_SCROLL_EMITTER(onScroll);
+    _host.onScrollBeginDrag = RNGUI_SCROLL_EMITTER(onScrollBeginDrag);
+    _host.onScrollEndDrag = RNGUI_SCROLL_EMITTER(onScrollEndDrag);
+    _host.onMomentumScrollBegin = RNGUI_SCROLL_EMITTER(onMomentumScrollBegin);
+    _host.onMomentumScrollEnd = RNGUI_SCROLL_EMITTER(onMomentumScrollEnd);
+
+#undef RNGUI_SCROLL_EMITTER
+
+    _host.onContentSizeChange = ^(CGSize size) {
+      RNGUI_EMITTER(emitter)
+      emitter->onContentSizeChange({.width = size.width, .height = size.height});
+    };
+
 #undef RNGUI_EMITTER
 
     // The collection view has to be reachable by walking `subviews[0]`, and has to stay
@@ -299,11 +336,41 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
   // installs an event emitter and there is no way to ask whether anything is listening, so
   // without being told, the list would post an event on every run-loop turn of every scroll for
   // the overwhelming majority of lists that never listen.
+  if (oldViewProps.decelerationRate != newViewProps.decelerationRate) {
+    [_host setDecelerationRate:newViewProps.decelerationRate];
+  }
+
   if (oldViewProps.tracksVisibleRange != newViewProps.tracksVisibleRange) {
     [_host setTracksVisibleRange:newViewProps.tracksVisibleRange];
   }
 
+  // The same gate as above, and needed for a second reason: a reanimated scroll handler attaches
+  // by view tag rather than by passing a prop, so there is nothing here to infer a listener from.
+  if (oldViewProps.tracksScroll != newViewProps.tracksScroll) {
+    [_host setTracksScroll:newViewProps.tracksScroll];
+  }
+
   [super updateProps:props oldProps:oldProps];
+}
+
+#pragma mark - Commands
+
+/**
+ * The one entry point that is not a prop, and it exists for reanimated.
+ *
+ * `scrollTo` inside a worklet compiles to `dispatchCommand(ref, 'scrollTo', …)`, which arrives
+ * here synchronously on the UI thread — mid-gesture, before the frame is drawn. That timing is the
+ * whole point: a bottom sheet pins its list at the top *while* the finger is moving, and a prop
+ * would put a React commit in the middle of that and land one frame late every time.
+ */
+- (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
+{
+  RCTRNGUICollectionViewHandleCommand(self, commandName, args);
+}
+
+- (void)scrollTo:(double)x y:(double)y animated:(BOOL)animated
+{
+  [_host scrollToX:x y:y animated:animated];
 }
 
 #pragma mark - React children

@@ -2,9 +2,9 @@
 // imports are deprecated and Metro warns about them at bundle time. The `Int32` import below
 // stays on its deep path because it is type-only and therefore erased — nothing reaches the
 // bundler to warn about.
-import { codegenNativeComponent } from 'react-native'
+import { codegenNativeComponent, codegenNativeCommands } from 'react-native'
 
-import type { ViewProps } from 'react-native'
+import type { HostComponent, ViewProps } from 'react-native'
 import type {
   DirectEventHandler,
   Double,
@@ -40,6 +40,27 @@ import type {
  * `WithDefault` — `kind: WithDefault<…>` fails with "must be optional" and a bare union
  * fails with "a default enum value is required".
  */
+/**
+ * `UIScrollView` geometry, shaped exactly like `ScrollView`'s own scroll event.
+ *
+ * The shape is not ours to choose: `@gorhom/bottom-sheet` destructures
+ * `{ contentOffset: { y } }` inside a worklet, and reanimated's `useAnimatedScrollHandler`
+ * types its argument as React Native's `NativeScrollEvent`. Anything narrower would work
+ * against those two and then fail in a way that reads as a reanimated bug.
+ */
+type ScrollEvent = Readonly<{
+  contentOffset: Readonly<{ x: Double; y: Double }>
+  contentSize: Readonly<{ width: Double; height: Double }>
+  layoutMeasurement: Readonly<{ width: Double; height: Double }>
+  contentInset: Readonly<{
+    top: Double
+    left: Double
+    bottom: Double
+    right: Double
+  }>
+  zoomScale: Double
+}>
+
 export interface NativeProps extends ViewProps {
   /**
    * The whole descriptor tree as JSON: sections, rows, the content DSL, and the light and
@@ -186,6 +207,60 @@ export interface NativeProps extends ViewProps {
     'interactive'
   >
 
+  // -------------------------------------------------------------------------
+  // Scrolling
+  // -------------------------------------------------------------------------
+
+  /**
+   * `UIScrollView.decelerationRate`, raw. Negative means "leave UIKit's own value alone".
+   *
+   * A number rather than the `'normal' | 'fast'` enum it looks like it should be, because
+   * `@gorhom/bottom-sheet` drives this from a worklet and sends **`0`** for a locked list — stop
+   * dead, so the drag that follows moves the sheet rather than continuing an inherited fling.
+   * An enum could not express that, and `Root` still takes `ScrollView`'s `'normal' | 'fast' |
+   * number` and converts.
+   *
+   * The sentinel is negative rather than `0` for exactly that reason: codegen has no
+   * representation of an absent number, and `0` is the one value the sheet most needs to send.
+   *
+   * Reanimated writes animated props straight onto the shadow node, so a prop it wants and we do
+   * not declare is dropped in silence — this being a typed prop is what makes the lock work at all.
+   */
+  decelerationRate?: WithDefault<Float, -1>
+
+  /**
+   * Whether native should emit scroll events at all.
+   *
+   * The same gate as `tracksVisibleRange`, for the same reason and with one extra one: a
+   * reanimated `useAnimatedScrollHandler` is attached by *view tag* rather than by passing a
+   * prop, so unlike `onVisibleRangeChange` there is nothing for `Root` to infer a listener
+   * from. Somebody has to say.
+   */
+  tracksScroll?: boolean
+
+  /**
+   * `UIScrollViewDelegate`, forwarded whole.
+   *
+   * All five, because reanimated's `useAnimatedScrollHandler` subscribes to all five whenever
+   * a handler object is passed — and a subscription with nothing behind it is a sheet that
+   * never learns the drag ended.
+   */
+  onScroll?: DirectEventHandler<ScrollEvent>
+  onScrollBeginDrag?: DirectEventHandler<ScrollEvent>
+  onScrollEndDrag?: DirectEventHandler<ScrollEvent>
+  onMomentumScrollBegin?: DirectEventHandler<ScrollEvent>
+  onMomentumScrollEnd?: DirectEventHandler<ScrollEvent>
+
+  /**
+   * The laid-out size of the content, whenever it changes.
+   *
+   * Gated by `tracksScroll` as well: it is what a bottom sheet with `enableDynamicSizing` reads
+   * to size itself to its content, and useless to everything else.
+   */
+  onContentSizeChange?: DirectEventHandler<
+    Readonly<{ width: Double; height: Double }>
+  >
+
   /**
    * Whether native should report the visible row range at all.
    *
@@ -245,5 +320,26 @@ export interface NativeProps extends ViewProps {
     Readonly<{ rowId: string; actionId: string }>
   >
 }
+
+/**
+ * A command rather than a prop, because the caller is reanimated rather than React.
+ *
+ * `scrollTo` from a worklet compiles to `dispatchCommand(ref, 'scrollTo', [x, y, animated])`,
+ * which reaches the component view's `handleCommand:args:` synchronously on the UI thread. That
+ * is the only way a bottom sheet can pin its list at the top *during* a drag: routing it through
+ * a prop would put a React commit in the middle of a gesture, one frame late every time.
+ */
+interface NativeCommands {
+  scrollTo: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    x: Double,
+    y: Double,
+    animated: boolean
+  ) => void
+}
+
+export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
+  supportedCommands: ['scrollTo'],
+})
 
 export default codegenNativeComponent<NativeProps>('RNGUICollectionView')

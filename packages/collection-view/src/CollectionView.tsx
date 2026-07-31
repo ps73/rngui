@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useRef, type ReactNode } from 'react'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  type ComponentRef,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import {
   Platform,
   StyleSheet,
@@ -42,7 +49,43 @@ export interface SectionIndexOptions {
   callout?: boolean
 }
 
+/**
+ * The underlying native view, as a ref target.
+ *
+ * Derived from the generated component rather than written out, because the shape is React
+ * Native's to decide and it has changed with the architecture more than once.
+ */
+export type CollectionViewInstance = ComponentRef<typeof NativeCollectionView>
+
+/** `UIScrollView` geometry, shaped exactly as `ScrollView` reports it. */
+export interface ScrollMetrics {
+  contentOffset: { x: number; y: number }
+  contentSize: { width: number; height: number }
+  layoutMeasurement: { width: number; height: number }
+  contentInset: { top: number; left: number; bottom: number; right: number }
+  zoomScale: number
+}
+
+/**
+ * `ScrollView`'s two named rates, as `UIScrollView` defines them.
+ *
+ * Named values rather than a native enum because the prop has to stay open to arbitrary
+ * numbers — `@gorhom/bottom-sheet` sends `0` to make a locked list stop dead.
+ */
+const DECELERATION_RATES = { normal: 0.998, fast: 0.99 } as const
+
+/** Negative is the native side's sentinel for "leave UIKit's own value alone". */
+const DECELERATION_RATE_UNSET = -1
+
 export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
+  /**
+   * The underlying native view.
+   *
+   * Exposed because reanimated needs it: an `useAnimatedRef` on this is what `scrollTo` resolves
+   * to a view tag, and it is how `@rngui/collection-view/bottom-sheet` pins the list at the top
+   * during a sheet drag.
+   */
+  ref?: Ref<CollectionViewInstance>
   /** `insetGrouped` is the iOS Settings look, and the default. */
   listAppearance?: ListAppearance
 
@@ -143,6 +186,33 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
   keyboardDismissMode?: 'none' | 'onDrag' | 'interactive'
 
   /**
+   * How quickly the list coasts after a flick, as `ScrollView` spells it: `'normal'`, `'fast'`,
+   * or a raw `UIScrollView` rate. `0` stops it dead.
+   */
+  decelerationRate?: 'normal' | 'fast' | number
+
+  /**
+   * Scroll position, on every frame of a scroll.
+   *
+   * Coalesced by nothing — this is `scrollViewDidScroll` forwarded whole, so it is as frequent as
+   * the display. Passing a callback is what turns the events on; a list that does not listen never
+   * pays for them.
+   */
+  onScroll?: (metrics: ScrollMetrics) => void
+
+  /** The laid-out size of the content, whenever it changes. Positional, as `ScrollView` has it. */
+  onContentSizeChange?: (width: number, height: number) => void
+
+  /**
+   * Forces the scroll events on even though no callback was passed.
+   *
+   * Needed for exactly one case, and it is not a rare one: a reanimated
+   * `useAnimatedScrollHandler` attaches by **view tag**, not by passing a prop, so there is
+   * nothing here to infer a listener from. `@rngui/collection-view/bottom-sheet` sets this.
+   */
+  tracksScroll?: boolean
+
+  /**
    * Reports which rows are on screen, so `Host` children can be windowed.
    *
    * Needed only for lists of hosted rows: those are real React subtrees and cannot be recycled,
@@ -223,6 +293,7 @@ function warnIfAndroid() {
  * native reparents each into the cell that owns it.
  */
 export function Root({
+  ref,
   style,
   listAppearance,
   appearance,
@@ -239,6 +310,10 @@ export function Root({
   keyboardAware,
   keyboardAwareOffset,
   keyboardDismissMode,
+  decelerationRate,
+  onScroll,
+  onContentSizeChange,
+  tracksScroll,
   onVisibleRangeChange,
   children,
   ...rest
@@ -285,6 +360,22 @@ export function Root({
       onVisibleRangeChange?.(event.nativeEvent)
     },
     [onVisibleRangeChange]
+  )
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<ScrollMetrics>) => {
+      onScroll?.(event.nativeEvent)
+    },
+    [onScroll]
+  )
+
+  // Unpacked into `ScrollView`'s positional signature, which is what every caller already knows
+  // and — not coincidentally — what `@gorhom/bottom-sheet` passes straight through.
+  const handleContentSizeChange = useCallback(
+    (event: NativeSyntheticEvent<{ width: number; height: number }>) => {
+      onContentSizeChange?.(event.nativeEvent.width, event.nativeEvent.height)
+    },
+    [onContentSizeChange]
   )
 
   /**
@@ -359,6 +450,7 @@ export function Root({
     <AppearanceProvider value={inherited}>
       <NativeCollectionView
         {...rest}
+        ref={ref}
         // `flex: 1` by default: this is a scroll view, and every screen that uses one wants it
         // to fill its parent. Callers can still override through `style`.
         style={[styles.fill, style]}
@@ -385,6 +477,20 @@ export function Root({
         keyboardAware={keyboardAware}
         keyboardAwareOffset={keyboardAwareOffset}
         keyboardDismissMode={keyboardDismissMode}
+        decelerationRate={
+          decelerationRate == null
+            ? DECELERATION_RATE_UNSET
+            : typeof decelerationRate === 'number'
+              ? decelerationRate
+              : DECELERATION_RATES[decelerationRate]
+        }
+        // Inferred from whether anything is listening, and overridable for the one case that
+        // cannot be inferred: a reanimated handler attaches by view tag rather than by prop.
+        tracksScroll={
+          tracksScroll ?? (onScroll != null || onContentSizeChange != null)
+        }
+        onScroll={handleScroll}
+        onContentSizeChange={handleContentSizeChange}
         sectionIndexShowsCallout={
           typeof sectionIndex === 'object'
             ? sectionIndex.callout !== false

@@ -132,9 +132,31 @@ class RNGUICollectionViewManager :
     value: String?,
   ) = Unit
 
+  override fun setDecelerationRate(
+    view: RNGUICollectionViewView,
+    value: Float,
+  ) = Unit
+
+  override fun setTracksScroll(
+    view: RNGUICollectionViewView,
+    value: Boolean,
+  ) = Unit
+
   override fun setTracksVisibleRange(
     view: RNGUICollectionViewView,
     value: Boolean,
+  ) = Unit
+
+  /**
+   * A command rather than a prop, and the delegate routes it here whether or not there is
+   * anything to scroll. Nothing does — but reanimated calls this from a worklet on every frame
+   * of a bottom-sheet drag, so it has to exist and has to be cheap.
+   */
+  override fun scrollTo(
+    view: RNGUICollectionViewView,
+    x: Double,
+    y: Double,
+    animated: Boolean,
   ) = Unit
 
   companion object {

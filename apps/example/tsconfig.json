@@ -16,7 +16,10 @@
     // a build artifact that does not exist during development. Mapping the paths to source
     // keeps the editor and `tsc` honest without anyone having to run a build first.
     "paths": {
-      "@rngui/collection-view": ["../../packages/collection-view/src/index"]
+      "@rngui/collection-view": ["../../packages/collection-view/src/index"],
+      "@rngui/collection-view/bottom-sheet": [
+        "../../packages/collection-view/src/bottom-sheet"
+      ]
     }
   },
   "include": ["app/**/*", "src/**/*", "*.js", "*.ts"]

@@ -22,6 +22,21 @@
   "types": "./lib/typescript/src/index.d.ts",
   "react-native": "src/index",
   "source": "src/index",
+  "exports": {
+    ".": {
+      "types": "./lib/typescript/src/index.d.ts",
+      "react-native": "./src/index.ts",
+      "import": "./lib/module/index.js",
+      "require": "./lib/commonjs/index.js"
+    },
+    "./bottom-sheet": {
+      "types": "./lib/typescript/src/bottom-sheet.d.ts",
+      "react-native": "./src/bottom-sheet.tsx",
+      "import": "./lib/module/bottom-sheet.js",
+      "require": "./lib/commonjs/bottom-sheet.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "src",
     "lib",
@@ -69,8 +84,22 @@
     ]
   },
   "peerDependencies": {
+    "@gorhom/bottom-sheet": ">=5",
     "react": "*",
-    "react-native": "*"
+    "react-native": "*",
+    "react-native-gesture-handler": "*",
+    "react-native-reanimated": "*"
+  },
+  "peerDependenciesMeta": {
+    "@gorhom/bottom-sheet": {
+      "optional": true
+    },
+    "react-native-gesture-handler": {
+      "optional": true
+    },
+    "react-native-reanimated": {
+      "optional": true
+    }
   },
   "publishConfig": {
     "access": "public"

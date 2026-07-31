@@ -59,6 +59,26 @@ public final class RNGUICollectionViewHost: NSObject {
   @objc public var onMenuSelect: ((String, String) -> Void)?
   @objc public var onSwipeAction: ((String, String) -> Void)?
 
+  /**
+   * `UIScrollViewDelegate`, forwarded as five blocks rather than one with a kind discriminator.
+   *
+   * A discriminator would mean an integer table on each side of the `.mm` boundary that has to
+   * stay in step by hand — the failure this file avoids everywhere else. Five properties cost five
+   * lines and cannot drift.
+   *
+   * Each carries `(contentOffset, contentSize, layoutMeasurement, adjustedContentInset)`, which is
+   * `ScrollView`'s payload minus `zoomScale`; a collection view never zooms, so the `.mm` sends a
+   * constant `1` rather than plumbing a value that can only have one.
+   */
+  @objc public var onScroll: ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?
+  @objc public var onScrollBeginDrag: ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?
+  @objc public var onScrollEndDrag: ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?
+  @objc public var onMomentumScrollBegin:
+    ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?
+  @objc public var onMomentumScrollEnd:
+    ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?
+  @objc public var onContentSizeChange: ((CGSize) -> Void)?
+
   // MARK: Insets and keyboard
 
   /// What the caller asked for, kept apart from what is currently applied. The keyboard path needs
@@ -95,6 +115,11 @@ public final class RNGUICollectionViewHost: NSObject {
   private var tracksVisibleRange = false
   private var visibleRangeEmitScheduled = false
   private var lastEmittedRange: (first: Int, last: Int)?
+
+  private var tracksScroll = false
+  /// Retained for as long as the host lives; releasing it is what unregisters the observer.
+  private var contentSizeObservation: NSKeyValueObservation?
+  private var lastEmittedContentSize: CGSize?
 
   private var listLayout: UICollectionViewCompositionalLayout!
   private var dataSource: UICollectionViewDiffableDataSource<String, String>!
@@ -182,6 +207,20 @@ public final class RNGUICollectionViewHost: NSObject {
 
     // Needed for scroll tracking, and it is what selection and swipe actions hang off.
     collectionView.delegate = self
+
+    // KVO rather than a `UICollectionView` subclass or a check inside `scrollViewDidScroll`: the
+    // content size changes when the *layout* resolves, which is neither a scroll nor a moment the
+    // delegate is told about. A sheet sizing itself to its content has to hear about it then, not
+    // on the first drag afterwards.
+    contentSizeObservation = collectionView.observe(\.contentSize, options: [.new]) {
+      [weak self] _, change in
+      guard let size = change.newValue else { return }
+      // UIKit only ever mutates this during layout on the main thread; the assertion documents
+      // that rather than paying for a hop that would report the size a frame late.
+      MainActor.assumeIsolated {
+        self?.contentSizeDidChange(size)
+      }
+    }
 
     // A scroll view holds content touches for ~150 ms before delivering them, so that starting a
     // scroll does not flash the row under the finger. The cost is that a *quick* tap can begin and
@@ -1372,6 +1411,52 @@ public final class RNGUICollectionViewHost: NSObject {
     updateSectionIndex()
   }
 
+  /// Negative is the sentinel for "unset" — see the note on the prop. Any other value is passed
+  /// through untouched, including `0`, which is a bottom sheet asking the list to stop dead.
+  @objc public func setDecelerationRate(_ rate: Double) {
+    collectionView.decelerationRate =
+      rate < 0 ? .normal : UIScrollView.DecelerationRate(rawValue: rate)
+  }
+
+  @objc public func setTracksScroll(_ tracks: Bool) {
+    guard tracksScroll != tracks else { return }
+    tracksScroll = tracks
+    // Cleared so that turning tracking back on reports the current size rather than staying silent
+    // because it happens to match whatever was last sent.
+    lastEmittedContentSize = nil
+    if tracks { contentSizeDidChange(collectionView.contentSize) }
+  }
+
+  /**
+   * The `scrollTo` command, clamped the way `RCTScrollViewComponentView` clamps it.
+   *
+   * Clamping is not politeness — an out-of-range `contentOffset` set during a gesture leaves the
+   * scroll view outside its own bounds with no rubber-banding to bring it back, so the list sticks
+   * until the next touch. `adjustedContentInset` rather than the caller's `contentInset`, because
+   * that is what actually bounds this scroll view once UIKit has folded in the surrounding chrome.
+   */
+  /// The selector is spelled out rather than left to Swift's inference, because the `.mm` has to
+  /// name it exactly and `scrollTo(x:y:animated:)` does not obviously become `scrollToX:y:animated:`.
+  @objc(scrollToX:y:animated:)
+  public func scrollTo(x: Double, y: Double, animated: Bool) {
+    let inset = collectionView.adjustedContentInset
+    let viewport = collectionView.bounds.size
+    let content = collectionView.contentSize
+
+    let minX = min(-inset.left, 0)
+    let minY = min(-inset.top, 0)
+    let target = CGPoint(
+      x: min(max(x, minX), max(content.width - viewport.width + inset.right, minX)),
+      y: min(max(y, minY), max(content.height - viewport.height + inset.bottom, minY))
+    )
+
+    // The early return is what makes this safe to call from inside `scrollViewDidScroll`, which is
+    // exactly where a bottom sheet calls it: setting the offset re-enters the delegate, and without
+    // this the second pass would set it again.
+    guard target != collectionView.contentOffset else { return }
+    collectionView.setContentOffset(target, animated: animated)
+  }
+
   @objc public func setTracksVisibleRange(_ tracks: Bool) {
     guard tracksVisibleRange != tracks else { return }
     tracksVisibleRange = tracks
@@ -1694,10 +1779,78 @@ extension RNGUICollectionViewHost: UICollectionViewDelegate {
 
   public func scrollViewDidScroll(_ scrollView: UIScrollView) {
     scheduleVisibleRangeEmit()
+    emit(onScroll)
+  }
+
+  public func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+    emit(onScrollBeginDrag)
+  }
+
+  public func scrollViewDidEndDragging(
+    _ scrollView: UIScrollView,
+    willDecelerate decelerate: Bool
+  ) {
+    emit(onScrollEndDrag)
+  }
+
+  public func scrollViewWillBeginDecelerating(_ scrollView: UIScrollView) {
+    emit(onMomentumScrollBegin)
+  }
+
+  public func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+    emit(onMomentumScrollEnd)
+  }
+
+  /**
+   * Also momentum-end, which is what `ScrollView` reports and what a bottom sheet is waiting for.
+   *
+   * A programmatic `setContentOffset(_:animated: true)` decelerates without ever entering the
+   * momentum phase, so `scrollViewDidEndDecelerating` never fires. A listener that only heard that
+   * one would keep believing the list is still moving — for a sheet, that means staying locked
+   * after the animation it started has already finished.
+   */
+  public func scrollViewDidEndScrollingAnimation(_ scrollView: UIScrollView) {
+    emit(onMomentumScrollEnd)
   }
 
   public func scrollViewDidChangeAdjustedContentInset(_ scrollView: UIScrollView) {
     updateSectionIndexInsets()
+  }
+
+  /**
+   * **Known gap: the last event after a cancelled rubber band is stale.**
+   *
+   * Collapse a `@gorhom/bottom-sheet` by dragging down on a list that is already at the top and the
+   * scroll view rubber-bands, the sheet's pan takes the gesture over, and the offset returns to 0 —
+   * but the frames between the rubber-banded value and 0 never reach this method, so the last
+   * position JavaScript heard about is the discarded one (about -67pt in the example screen).
+   * Confirmed by pixel-diffing the list at both readings: the content is identical, so the scroll
+   * view itself is right and only the report is behind.
+   *
+   * Two fixes were tried and neither moved it: emitting after a programmatic `scrollTo`, and
+   * emitting from the container's `layoutSubviews`. Whatever restores the offset does so without
+   * calling `scrollViewDidScroll` *and* without relaying out the container. Left documented rather
+   * than papered over with a third guess. Nothing observable depends on it — the sheet reads its
+   * own state, not this — but a `onScroll` consumer such as a parallax header would be wrong until
+   * the next real scroll.
+   */
+  private func emit(_ block: ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?) {
+    guard tracksScroll, let block else { return }
+    block(
+      collectionView.contentOffset,
+      collectionView.contentSize,
+      collectionView.bounds.size,
+      collectionView.adjustedContentInset
+    )
+  }
+
+  private func contentSizeDidChange(_ size: CGSize) {
+    guard tracksScroll, let emit = onContentSizeChange else { return }
+    // KVO fires on every assignment, and the layout reassigns an unchanged size on any relayout —
+    // a resize that did not resize is not something a listener should have to filter out.
+    guard lastEmittedContentSize != size else { return }
+    lastEmittedContentSize = size
+    emit(size)
   }
 
   public func collectionView(

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Pressable, Text, View } from 'react-native'
+import { router } from 'expo-router'
 import {
   CollectionView,
   type ColorScheme,
@@ -79,6 +80,20 @@ export default function CustomScreen() {
         <CollectionView.Host id="variant" height={64}>
           <Chips options={VARIANTS} value={variant} onChange={setVariant} />
         </CollectionView.Host>
+      </CollectionView.Section>
+
+      <CollectionView.Section
+        header="Integrations"
+        footer="@gorhom/bottom-sheet reaches the list through the @rngui/collection-view/bottom-sheet entry point, which is a separate import so nobody pays for reanimated and gesture-handler unless they use it."
+      >
+        <CollectionView.Row
+          id="sheet"
+          onPress={() => router.push('/custom/sheet')}
+        >
+          <CollectionView.Icon systemImage="rectangle.bottomhalf.filled" />
+          <CollectionView.Label>Bottom sheet</CollectionView.Label>
+          <CollectionView.Chevron />
+        </CollectionView.Row>
       </CollectionView.Section>
 
       <CollectionView.Section header="Themed rows">
