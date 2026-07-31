@@ -20,6 +20,16 @@ import { buildContacts } from '../../../src/data/contacts'
  */
 const CONTACT_COUNT = 2000
 
+/**
+ * A flat grey, not a theme colour.
+ *
+ * This crosses as one static hex on a per-row prop, so it cannot adapt to dark mode the way an
+ * `appearance` field does — and reading it from the unistyles theme would mean re-rendering 2,000
+ * rows on every appearance change, which is the one thing this screen exists to avoid. The system
+ * grey happens to be the same value in both modes, so nothing is lost by fixing it.
+ */
+const AVATAR_COLOR = '#8E8E93'
+
 export default function ContactsScreen() {
   // Built once. The point of this screen is that 2,000 rows cost nothing *after* the first
   // commit, which is only true if the data behind them is not rebuilt on every render.
@@ -36,10 +46,14 @@ export default function ContactsScreen() {
       // Off because the scrubber already owns this edge — two rails on the same strip read as a
       // mistake even when they are inset apart.
       showsVerticalScrollIndicator={false}
-      // `soft` rather than `blurred`, to match the navigation bar above it. A hard-edged material
-      // under an iOS 26 soft scroll edge gives the screen two different bottom edges a few points
-      // apart, and the eye reads that as a mistake long before it works out why.
-      appearance={{ headerBackgroundStyle: 'soft' }}
+      // No background at all, which is what the real Contacts app does: the letter is a small grey
+      // glyph floating over the rows, and the only thing softening the top of the screen is the
+      // navigation bar's own scroll edge effect. A material here — hard-edged or faded — is one
+      // surface too many, and it shows up as a second edge travelling down the screen.
+      //
+      // Legible only because each row leads with an avatar, so the pinned letter overlaps a graphic
+      // rather than a name. Take the icons away and this needs a background again.
+      appearance={{ headerBackgroundStyle: 'transparent' }}
       // Wired here because 2,000 rows is where the tracking either costs something or doesn't.
       // Note what it deliberately does *not* do: drive state. Rendering from this would mean a
       // React render per scroll frame, which is precisely the cost the native side exists to
@@ -56,7 +70,23 @@ export default function ContactsScreen() {
           indexTitle={section.letter}
         >
           {section.contacts.map((contact) => (
-            <CollectionView.Row key={contact.id} id={contact.id} onPress={noop}>
+            <CollectionView.Row
+              key={contact.id}
+              id={contact.id}
+              onPress={noop}
+              // Taller than a default row, as Contacts is, and enough for the avatar to sit in.
+              height={56}
+            >
+              {/*
+                The no-photo state, which is what Contacts shows for most people. Not decoration:
+                the pinned header has no background, so the letter travelling down the screen needs
+                a graphic to pass over rather than a name.
+              */}
+              <CollectionView.Icon
+                systemImage="person.crop.circle.fill"
+                color={AVATAR_COLOR}
+                size={38}
+              />
               <CollectionView.Label>{contact.name}</CollectionView.Label>
             </CollectionView.Row>
           ))}

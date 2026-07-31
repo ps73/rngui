@@ -137,9 +137,17 @@ field — that is what keeps "fall back to the platform's own colour" expressibl
 `headerBackgroundStyle` decides how a **pinned** header paints itself, so it only means anything in
 the `plain` appearance. `opaque` hides the rows passing under it; `blurred` is a material that stops
 in a straight line, which is how iOS drew these before 26; `soft` fades that material out so there
-is no line at all, matching what `UIScrollEdgeEffect`'s soft style does to a navigation bar. Under
-an iOS 26 header, `soft` is the one that belongs — two hard edges a few points apart read as a
-mistake.
+is no line at all, matching what `UIScrollEdgeEffect`'s soft style does to a navigation bar.
+
+**`transparent` is what the system Contacts app actually uses**, and it is worth saying because the
+other three look like the obvious answers. There is no background at all: the letter is a small grey
+glyph floating over the rows, and the only thing softening the top of the screen is the navigation
+bar's own scroll edge effect. Any material is one surface too many, and it reads as a second edge
+travelling down the screen.
+
+That only works when each row leads with something the letter can pass over — Contacts has an
+avatar in every row. Over a bare label it is unreadable, and that is when the other three earn
+their keep.
 
 `inverted` swaps the grouped look: a plain background with tinted rows rather than iOS's tinted
 background with plain cards. It is a preset, so anything in `appearance` still wins.
