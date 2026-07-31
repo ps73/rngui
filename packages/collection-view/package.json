@@ -63,8 +63,10 @@
     "typecheck": "tsc --noEmit",
     "build": "bob build",
     "gen:swift-types": "node scripts/gen-swift-types.mjs",
+    "gen:kotlin-types": "node scripts/gen-kotlin-types.mjs",
     "test": "swift test",
-    "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests"
+    "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests",
+    "verify:kotlin-types": "node scripts/gen-kotlin-types.mjs && git diff --exit-code -- android/src/main/java/com/rngui/collectionview/generated android/src/test"
   },
   "codegenConfig": {
     "name": "RNGUICollectionView",

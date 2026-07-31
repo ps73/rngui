@@ -26,10 +26,17 @@ import ts from 'typescript'
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readTreeSchema, resolvePath } from './tree-schema.mjs'
+import { synthesizeFixture } from './tree-fixture.mjs'
+import {
+  FORWARD_COMPAT_FIXTURE,
+  FORWARD_COMPAT_ASSERTIONS,
+} from './forward-compat-fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const SOURCE = path.join(here, '..', 'src', 'tree.ts')
 const OUTPUT = path.join(here, '..', 'ios', 'Generated', 'TreeTypes.swift')
+const TOOL = 'gen-swift-types'
 
 /** Swift keywords that have to be escaped when used as an enum case or property name. */
 const SWIFT_KEYWORDS = new Set([
@@ -90,24 +97,6 @@ const SWIFT_KEYWORDS = new Set([
 
 const escape = (name) => (SWIFT_KEYWORDS.has(name) ? `\`${name}\`` : name)
 
-const source = ts.createSourceFile(
-  SOURCE,
-  readFileSync(SOURCE, 'utf8'),
-  ts.ScriptTarget.Latest,
-  /* setParentNodes */ true
-)
-
-/** String-literal unions become Swift enums; interfaces become structs. */
-const enums = new Map() // name -> string[] of raw values
-const structs = [] // { name, doc, properties }
-
-/** Pulls a JSDoc block out as plain text, when it is a simple comment. */
-function docOf(node) {
-  const jsDoc = node.jsDoc?.[0]
-  if (jsDoc == null || typeof jsDoc.comment !== 'string') return undefined
-  return jsDoc.comment.trim() || undefined
-}
-
 /** Renders a doc comment at the given indent, preserving the author's line breaks. */
 function renderDoc(doc, indent) {
   if (doc == null) return ''
@@ -116,87 +105,41 @@ function renderDoc(doc, indent) {
 }
 
 /**
- * Maps a *written* type annotation to Swift, plus the default used when the key is absent.
+ * Spells a shape in Swift, plus the default used when the key is absent.
  *
  * `fallback` is null for types that have no sensible zero value — a struct, for instance —
  * which is what forces such fields to be declared optional in `tree.ts`.
  */
-function mapType(node) {
-  if (node.kind === ts.SyntaxKind.StringKeyword)
-    return { swift: 'String', fallback: '""' }
-  if (node.kind === ts.SyntaxKind.NumberKeyword)
-    return { swift: 'Double', fallback: '0' }
-  if (node.kind === ts.SyntaxKind.BooleanKeyword)
-    return { swift: 'Bool', fallback: 'false' }
-
-  if (ts.isArrayTypeNode(node)) {
-    const element = mapType(node.elementType)
-    return { swift: `[${element.swift}]`, fallback: '[]' }
-  }
-
-  if (ts.isTypeReferenceNode(node)) {
-    const name = node.typeName.getText(source)
-    // The integer marker. As a resolved type this is `number`; as syntax it is a name.
-    if (name === 'IntValue') return { swift: 'Int', fallback: '0' }
-    if (enums.has(name)) {
-      const [first] = enums.get(name)
-      return { swift: name, fallback: `.${escape(first)}` }
-    }
-    // A struct. No zero value, so it must be optional or inside an array.
-    return { swift: name, fallback: null }
-  }
-
-  throw new Error(
-    `gen-swift-types: unsupported type '${node.getText(source)}' at ` +
-      `${SOURCE}:${source.getLineAndCharacterOfPosition(node.getStart()).line + 1}. ` +
-      'Add a mapping here rather than working around it in tree.ts.'
-  )
-}
-
-// --- collect -----------------------------------------------------------------
-// Enums first: a struct property can reference one, and mapType needs it registered.
-
-for (const statement of source.statements) {
-  if (!ts.isTypeAliasDeclaration(statement)) continue
-  const { type } = statement
-  if (!ts.isUnionTypeNode(type)) continue
-
-  const values = type.types.map((member) => {
-    if (ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal)) {
-      return member.literal.text
-    }
-    throw new Error(
-      `gen-swift-types: '${statement.name.text}' is a union of something other than string ` +
-        'literals, which has no Swift enum equivalent.'
-    )
-  })
-
-  enums.set(statement.name.text, values)
-}
-
-for (const statement of source.statements) {
-  if (!ts.isInterfaceDeclaration(statement)) continue
-
-  const properties = statement.members
-    .filter(ts.isPropertySignature)
-    .map((member) => {
-      const name = member.name.getText(source)
-      const optional = member.questionToken != null
-      const mapped = mapType(member.type)
-
-      if (!optional && mapped.fallback == null) {
-        throw new Error(
-          `gen-swift-types: '${statement.name.text}.${name}' is a required ${mapped.swift}, ` +
-            'which has no default to fall back to when the key is missing. Make it optional in ' +
-            'tree.ts, or give it a fallback in this script.'
-        )
+function mapType(shape, context) {
+  switch (shape.shape) {
+    case 'string':
+      return { type: 'String', fallback: '""' }
+    case 'number':
+      return { type: 'Double', fallback: '0' }
+    case 'int':
+      return { type: 'Int', fallback: '0' }
+    case 'boolean':
+      return { type: 'Bool', fallback: 'false' }
+    case 'array':
+      return {
+        type: `[${mapType(shape.element, context).type}]`,
+        fallback: '[]',
       }
-
-      return { name, optional, doc: docOf(member), ...mapped }
-    })
-
-  structs.push({ name: statement.name.text, doc: docOf(statement), properties })
+    case 'enum': {
+      const [first] = context.enums.get(shape.name)
+      return { type: shape.name, fallback: `.${escape(first)}` }
+    }
+    default:
+      // A struct. No zero value, so it must be optional or inside an array.
+      return { type: shape.name, fallback: null }
+  }
 }
+
+const { enums, structs } = readTreeSchema({
+  sourcePath: SOURCE,
+  tool: TOOL,
+  mapType,
+})
 
 // --- emit --------------------------------------------------------------------
 
@@ -248,8 +191,8 @@ for (const { name, doc, properties } of structs) {
     // compiles; an optional `var` is implicitly nil already and needs nothing.
     out.push(
       property.optional
-        ? `  var ${escape(property.name)}: ${property.swift}?`
-        : `  var ${escape(property.name)}: ${property.swift} = ${property.fallback}`
+        ? `  var ${escape(property.name)}: ${property.type}?`
+        : `  var ${escape(property.name)}: ${property.type} = ${property.fallback}`
     )
   }
 
@@ -268,7 +211,7 @@ for (const { name, doc, properties } of structs) {
     `    let container = try decoder.container(keyedBy: CodingKeys.self)`
   )
   for (const property of properties) {
-    const decode = `try container.decodeIfPresent(${property.swift}.self, forKey: .${escape(property.name)})`
+    const decode = `try container.decodeIfPresent(${property.type}.self, forKey: .${escape(property.name)})`
     out.push(
       property.optional
         ? `    ${escape(property.name)} = ${decode}`
@@ -284,126 +227,71 @@ const rendered = out.join('\n')
 
 // --- fixture + round-trip test ------------------------------------------------
 //
-// Generated from the same field list as the model, which is the entire point. A hand-written
-// fixture protects against nothing: add a field to tree.ts and the fixture simply does not
-// mention it, so the test keeps passing while the field silently never arrives. Deriving both
-// from the schema means new fields are covered the moment they exist.
-//
-// Every synthesized value is chosen to *differ from the field's default*, so "decoded
-// correctly" and "fell back because decoding missed it" are distinguishable. That is the whole
-// assertion.
+// Both the fixture and the checks come from `tree-fixture.mjs`, shared with the Kotlin
+// generator. All this file does is spell the checks as XCTest.
 
-const structsByName = new Map(structs.map((s) => [s.name, s]))
 const ROOT = 'Tree'
-if (!structsByName.has(ROOT)) {
-  throw new Error(
-    `gen-swift-types: expected a '${ROOT}' interface in tree.ts as the root type.`
-  )
+const { fixture, checks } = synthesizeFixture({ structs, enums, root: ROOT })
+
+/**
+ * Renders one shared accessor path as Swift.
+ *
+ * Swift's optional chain unwraps once and the rest of the expression rides on it: after
+ * `menuItems?[0]` the element is *not* optional, so `menuItems?[0]?.id` is rejected outright.
+ * So `optional` here means "the value just produced still needs unwrapping", and indexing clears
+ * it. Kotlin's safe call works the other way round, which is why this is not shared.
+ */
+function swiftPath(path) {
+  let expression = 'decoded'
+  let optional = false
+
+  for (const step of resolvePath(structs, ROOT, path)) {
+    if (step.kind === 'index') {
+      expression += `${optional ? '?' : ''}[${step.index}]`
+      optional = false
+      continue
+    }
+    expression += `${optional ? '?.' : '.'}${step.kind === 'count' ? 'count' : escape(step.name)}`
+    optional = step.kind === 'property' && step.optional
+  }
+
+  return expression
 }
 
-let seed = 0
-const assertions = []
-
-/** Builds a JSON value for one property, and records the assertion that checks it. */
-function synthProperty(property, jsonPath, swiftPath, visiting) {
-  const swiftAccess = `${swiftPath}.${escape(property.name)}`
-
-  if (property.swift === 'String') {
-    const value = `${jsonPath}.${property.name}`
-    assertions.push(`XCTAssertEqual(${swiftAccess}, ${JSON.stringify(value)})`)
-    return value
+/** Spells one shared expectation as a Swift literal. */
+function swiftLiteral(expect) {
+  switch (expect.kind) {
+    case 'string':
+      return JSON.stringify(expect.value)
+    case 'boolean':
+      return 'true'
+    case 'enum':
+      return `.${escape(expect.value)}`
+    default:
+      return String(expect.value)
   }
-  if (property.swift === 'Bool') {
-    // The default is `false`, so `true` is the only value that proves decoding happened.
-    assertions.push(`XCTAssertEqual(${swiftAccess}, true)`)
-    return true
-  }
-  if (property.swift === 'Int' || property.swift === 'Double') {
-    const value = ++seed * 11
-    assertions.push(`XCTAssertEqual(${swiftAccess}, ${value})`)
-    return value
-  }
-  if (enums.has(property.swift)) {
-    // The *last* case, never the first: the first is what a failed decode falls back to.
-    const cases = enums.get(property.swift)
-    const value = cases[cases.length - 1]
-    assertions.push(`XCTAssertEqual(${swiftAccess}, .${escape(value)})`)
-    return value
-  }
-  // Optional properties need `?` before any further member access, so nested assertions read
-  // `decoded.appearance?.font?.design`.
-  const chain = property.optional ? `${swiftAccess}?` : swiftAccess
-
-  const arrayMatch = /^\[(.+)\]$/.exec(property.swift)
-  if (arrayMatch) {
-    const elementName = arrayMatch[1]
-
-    // An array of primitives — `colors: string[]`, `locations: number[]`. One element is enough:
-    // the assertion proves the array decoded and that its element type is right, which is the only
-    // thing that can drift between TypeScript and Swift.
-    if (elementName === 'String') {
-      const value = `${jsonPath}.${property.name}[0]`
-      assertions.push(
-        `XCTAssertEqual(${chain}.first, ${JSON.stringify(value)})`
-      )
-      return [value]
-    }
-    if (elementName === 'Double' || elementName === 'Int') {
-      const value = ++seed * 11
-      assertions.push(`XCTAssertEqual(${chain}.first, ${value})`)
-      return [value]
-    }
-    if (elementName === 'Bool') {
-      assertions.push(`XCTAssertEqual(${chain}.first, true)`)
-      return [true]
-    }
-
-    const element = structsByName.get(elementName)
-    if (element == null) {
-      throw new Error(
-        `gen-swift-types: no struct '${elementName}' for the fixture.`
-      )
-    }
-    assertions.push(`XCTAssertEqual(${chain}.count, 1)`)
-    return [
-      synthStruct(
-        element,
-        `${jsonPath}.${property.name}[0]`,
-        `${chain}[0]`,
-        visiting
-      ),
-    ]
-  }
-
-  // A directly referenced struct — `appearance?: Appearance`. No assertion of its own; the
-  // recursion asserts each of its fields, which is stricter than checking the struct exists.
-  const struct = structsByName.get(property.swift)
-  if (struct != null) {
-    return synthStruct(struct, `${jsonPath}.${property.name}`, chain, visiting)
-  }
-
-  throw new Error(
-    `gen-swift-types: cannot synthesize a fixture value for ${property.swift}.`
-  )
 }
 
-function synthStruct(struct, jsonPath, swiftPath, visiting) {
-  if (visiting.has(struct.name)) {
-    throw new Error(
-      `gen-swift-types: '${struct.name}' is recursive. The fixture generator cannot terminate, ` +
-        'and neither can codegen — flatten it with parent indices instead.'
-    )
-  }
-  const nested = new Set(visiting).add(struct.name)
+const assertions = checks.map(
+  ({ path, expect }) =>
+    `XCTAssertEqual(${swiftPath(path)}, ${swiftLiteral(expect)})`
+)
 
-  const object = {}
-  for (const property of struct.properties) {
-    object[property.name] = synthProperty(property, jsonPath, swiftPath, nested)
-  }
-  return object
-}
+// --- forward-compatibility assertions -----------------------------------------
+//
+// Rendered from the shared path list in forward-compat-fixture.mjs. The Kotlin generator renders
+// the same list against the same JSON file, which is the only way "both platforms decode a newer
+// bundle identically" is a checked claim rather than an intention.
 
-const fixture = synthStruct(structsByName.get(ROOT), ROOT, 'decoded', new Set())
+const forwardCompatAssertions = FORWARD_COMPAT_ASSERTIONS.map(
+  ([description, path, expected]) => {
+    const literal =
+      typeof expected === 'object' && expected !== null && 'enum' in expected
+        ? `.${escape(expected.value)}`
+        : JSON.stringify(expected)
+    return `XCTAssertEqual(${swiftPath(path)}, ${literal}, ${JSON.stringify(description)})`
+  }
+)
 
 const testSource = `// Generated from src/tree.ts by scripts/gen-swift-types.mjs. Do not edit.
 //
@@ -418,19 +306,31 @@ import XCTest
 @testable import RNGUICollectionViewModel
 
 final class TreeTypesTests: XCTestCase {
-  private func loadFixture() throws -> Data {
+  private func load(_ name: String) throws -> Data {
     let url = try XCTUnwrap(
-      Bundle.module.url(forResource: "TreeTypesFixture", withExtension: "json"),
-      "TreeTypesFixture.json missing from the test bundle"
+      Bundle.module.url(forResource: name, withExtension: "json"),
+      "\\(name).json missing from the test bundle"
     )
     return try Data(contentsOf: url)
   }
 
   /// Every field in the schema decodes to its fixture value.
   func testEveryFieldRoundTrips() throws {
-    let decoded = try JSONDecoder().decode(Tree.self, from: try loadFixture())
+    let decoded = try JSONDecoder().decode(Tree.self, from: try load("TreeTypesFixture"))
 
 ${assertions.map((line) => `    ${line}`).join('\n')}
+  }
+
+  /// A tree from a *newer* JS bundle than this binary still decodes to a usable list.
+  ///
+  /// The same fixture and the same assertions run on Android — see
+  /// \`android/src/test/java/com/rngui/collectionview/generated/TreeTypesTest.kt\`. A decoder that
+  /// is lenient on one platform and strict on the other is worse than one that is strict on both,
+  /// because only one of the two phones goes blank.
+  func testForwardCompatibleTreeDecodes() throws {
+    let decoded = try JSONDecoder().decode(Tree.self, from: try load("ForwardCompatFixture"))
+
+${forwardCompatAssertions.map((line) => `    ${line}`).join('\n')}
   }
 
   /// An unrecognised enum value degrades to \`.unknown\` instead of failing the whole payload.
@@ -457,6 +357,12 @@ const artifacts = [
   [
     path.join(TESTS_DIR, 'TreeTypesFixture.json'),
     `${JSON.stringify(fixture, null, 2)}\n`,
+  ],
+  // Written here rather than by the Kotlin generator so everything under ios/Tests has one
+  // author, even though both platforms read it.
+  [
+    path.join(TESTS_DIR, 'ForwardCompatFixture.json'),
+    `${JSON.stringify(FORWARD_COMPAT_FIXTURE, null, 2)}\n`,
   ],
   [path.join(TESTS_DIR, 'TreeTypesTests.swift'), testSource],
 ]

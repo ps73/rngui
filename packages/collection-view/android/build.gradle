@@ -47,6 +47,21 @@ android {
   }
 }
 
+/**
+ * The contract test between `src/tree.ts` and the generated Kotlin model.
+ *
+ * It reads the *same* fixture files the Swift test reads, straight out of `ios/Tests`, rather
+ * than a copy under `src/test/resources`. Two copies of a contract fixture is two contracts, and
+ * the whole claim of that test is that the two platforms accept the same tree.
+ *
+ * Passed as a system property rather than wired into the test source set, because adding
+ * `../ios/Tests` as a resource directory would also package `TreeTypesTests.swift` into the test
+ * runtime classpath — harmless, but the kind of surprise that costs somebody an afternoon.
+ */
+tasks.withType(Test).configureEach {
+  systemProperty "rngui.fixtureDir", file("${projectDir}/../ios/Tests").absolutePath
+}
+
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
   compilerOptions {
     jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
@@ -63,4 +78,11 @@ dependencies {
   // former for the latter at the app's exact version, so an unversioned `+` here can never drift
   // from what the app resolves.
   implementation "com.facebook.react:react-native:+"
+
+  testImplementation "junit:junit:4.13.2"
+  // The generated decoders use `org.json`, which is part of the platform on a device but is a
+  // signature-only stub in the `android.jar` unit tests compile against — every method throws
+  // "not mocked". This is the real implementation, on the test classpath only, so it never
+  // reaches the AAR and never duplicates the platform's copy at runtime.
+  testImplementation "org.json:json:20250517"
 }

@@ -11,17 +11,17 @@ import XCTest
 @testable import RNGUICollectionViewModel
 
 final class TreeTypesTests: XCTestCase {
-  private func loadFixture() throws -> Data {
+  private func load(_ name: String) throws -> Data {
     let url = try XCTUnwrap(
-      Bundle.module.url(forResource: "TreeTypesFixture", withExtension: "json"),
-      "TreeTypesFixture.json missing from the test bundle"
+      Bundle.module.url(forResource: name, withExtension: "json"),
+      "\(name).json missing from the test bundle"
     )
     return try Data(contentsOf: url)
   }
 
   /// Every field in the schema decodes to its fixture value.
   func testEveryFieldRoundTrips() throws {
-    let decoded = try JSONDecoder().decode(Tree.self, from: try loadFixture())
+    let decoded = try JSONDecoder().decode(Tree.self, from: try load("TreeTypesFixture"))
 
     XCTAssertEqual(decoded.sections.count, 1)
     XCTAssertEqual(decoded.sections[0].id, "Tree.sections[0].id")
@@ -92,8 +92,8 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.sections[0].rows[0].leadingActions?[0].backgroundColor, "Tree.sections[0].rows[0].leadingActions[0].backgroundColor")
     XCTAssertEqual(decoded.listAppearance, .plain)
     XCTAssertEqual(decoded.appearance?.background, "Tree.appearance.background")
-    XCTAssertEqual(decoded.appearance?.backgroundGradient?.colors.first, "Tree.appearance.backgroundGradient.colors[0]")
-    XCTAssertEqual(decoded.appearance?.backgroundGradient?.locations?.first, 99)
+    XCTAssertEqual(decoded.appearance?.backgroundGradient?.colors[0], "Tree.appearance.backgroundGradient.colors[0]")
+    XCTAssertEqual(decoded.appearance?.backgroundGradient?.locations?[0], 99)
     XCTAssertEqual(decoded.appearance?.backgroundGradient?.angle, 110)
     XCTAssertEqual(decoded.appearance?.rowBackground, "Tree.appearance.rowBackground")
     XCTAssertEqual(decoded.appearance?.separator, "Tree.appearance.separator")
@@ -123,8 +123,8 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.appearance?.footerFont?.variations, "Tree.appearance.footerFont.variations")
     XCTAssertEqual(decoded.appearance?.footerFont?.scaled, true)
     XCTAssertEqual(decoded.darkAppearance?.background, "Tree.darkAppearance.background")
-    XCTAssertEqual(decoded.darkAppearance?.backgroundGradient?.colors.first, "Tree.darkAppearance.backgroundGradient.colors[0]")
-    XCTAssertEqual(decoded.darkAppearance?.backgroundGradient?.locations?.first, 165)
+    XCTAssertEqual(decoded.darkAppearance?.backgroundGradient?.colors[0], "Tree.darkAppearance.backgroundGradient.colors[0]")
+    XCTAssertEqual(decoded.darkAppearance?.backgroundGradient?.locations?[0], 165)
     XCTAssertEqual(decoded.darkAppearance?.backgroundGradient?.angle, 176)
     XCTAssertEqual(decoded.darkAppearance?.rowBackground, "Tree.darkAppearance.rowBackground")
     XCTAssertEqual(decoded.darkAppearance?.separator, "Tree.darkAppearance.separator")
@@ -153,6 +153,27 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.darkAppearance?.footerFont?.weight, "Tree.darkAppearance.footerFont.weight")
     XCTAssertEqual(decoded.darkAppearance?.footerFont?.variations, "Tree.darkAppearance.footerFont.variations")
     XCTAssertEqual(decoded.darkAppearance?.footerFont?.scaled, true)
+  }
+
+  /// A tree from a *newer* JS bundle than this binary still decodes to a usable list.
+  ///
+  /// The same fixture and the same assertions run on Android — see
+  /// `android/src/test/java/com/rngui/collectionview/generated/TreeTypesTest.kt`. A decoder that
+  /// is lenient on one platform and strict on the other is worse than one that is strict on both,
+  /// because only one of the two phones goes blank.
+  func testForwardCompatibleTreeDecodes() throws {
+    let decoded = try JSONDecoder().decode(Tree.self, from: try load("ForwardCompatFixture"))
+
+    XCTAssertEqual(decoded.sections.count, 1, "the known section survived")
+    XCTAssertEqual(decoded.sections[0].header, "Still here", "its header decoded past the unknown sibling key")
+    XCTAssertEqual(decoded.sections[0].rows.count, 2, "both rows survived, including the unrenderable one")
+    XCTAssertEqual(decoded.sections[0].rows[0].kind, .value, "the known row is intact")
+    XCTAssertEqual(decoded.sections[0].rows[0].value, "Value", "and kept its fields")
+    XCTAssertEqual(decoded.sections[0].rows[1].kind, .unknown, "the future row kind degraded rather than throwing")
+    XCTAssertEqual(decoded.sections[0].rows[1].label, "From a newer bundle", "and the rest of that row still decoded")
+    XCTAssertEqual(decoded.listAppearance, .unknown, "an unrecognised value for a known enum degrades too")
+    XCTAssertEqual(decoded.appearance?.labelColor, "#112233FF", "appearance decoded past its unknown key")
+    XCTAssertEqual(decoded.appearance?.font?.weight, "620", "and so did the font nested inside it")
   }
 
   /// An unrecognised enum value degrades to `.unknown` instead of failing the whole payload.

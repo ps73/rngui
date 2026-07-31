@@ -25,7 +25,10 @@ let package = Package(
       name: "RNGUICollectionViewModelTests",
       dependencies: ["RNGUICollectionViewModel"],
       path: "ios/Tests",
-      resources: [.process("TreeTypesFixture.json")]
+      resources: [
+        .process("TreeTypesFixture.json"),
+        .process("ForwardCompatFixture.json"),
+      ]
     ),
   ]
 )
