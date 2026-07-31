@@ -103,14 +103,25 @@ export default function SheetScreen() {
         <BottomSheetCollectionView
           onScroll={handleScroll}
           onContentSizeChange={handleContentSizeChange}
+          // A plain surface with tinted rows, rather than iOS's tinted surface with plain cards.
+          // Inside a sheet this is the look that reads correctly: the sheet *is* the card, so a
+          // second set of cards floating on a grey backdrop inside it is one card too many.
+          inverted
           // Transparent so the sheet's rounded background shows through: the collection view is a
           // square opaque rectangle, and left opaque it paints its own corners over the sheet's.
+          // This overrides the `inverted` preset's own background, which the sheet now supplies —
+          // and it has to be repeated for dark mode, because the dark appearance deliberately does
+          // not inherit the light one field by field.
           appearance={{
             background: 'transparent',
             tintColor: '#AF52DE',
             headerTextColor: '#AF52DE',
           }}
-          darkAppearance={{ tintColor: '#BF5AF2', headerTextColor: '#BF5AF2' }}
+          darkAppearance={{
+            background: 'transparent',
+            tintColor: '#BF5AF2',
+            headerTextColor: '#BF5AF2',
+          }}
           // The sheet reaches the bottom of the screen, under a floating tab bar and the home
           // indicator, and `contentInsetAdjustmentBehavior` is pinned to `never` inside a sheet —
           // so nothing folds the safe area in on the list's behalf. Bottom only: a *top* inset
@@ -183,7 +194,9 @@ const ROWS = Array.from({ length: 40 }, (_, index) => `Row ${index + 1}`)
 const styles = StyleSheet.create((theme) => ({
   fill: { flex: 1 },
   sheetBackground: {
-    backgroundColor: theme.colors.background,
+    // The `inverted` background, since the sheet is the surface the list would otherwise paint
+    // itself: plain white in light, near-black in dark, with the rows tinted against it.
+    backgroundColor: theme.colors.invertedBackground,
   },
   grabber: {
     position: 'absolute',
@@ -208,7 +221,9 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: 8,
     borderRadius: 12,
     gap: 2,
-    backgroundColor: theme.colors.rowBackground,
+    // The same tint the rows use, so the readout reads as a chip on the sheet rather than
+    // disappearing into it — the sheet's own surface is now plain.
+    backgroundColor: theme.colors.invertedRowBackground,
   },
   readoutLabel: {
     fontSize: 12,
