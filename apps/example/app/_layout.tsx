@@ -4,6 +4,8 @@ import '../src/unistyles'
 import { useColorScheme } from 'react-native'
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
+import { useFonts } from 'expo-font'
+import { INTER } from '../src/fonts'
 
 /**
  * The root stack.
@@ -26,9 +28,20 @@ import { StatusBar } from 'expo-status-bar'
  *    nothing in the app's own code to suggest why. `DefaultTheme.colors.card` being white is
  *    the same bug's other face: it is what paints the large-title area light when
  *    `headerLargeStyle` does not force it transparent.
+ *
+ * 4. **Nothing renders until Inter has registered.** A `CollectionView.Root` asking for a family
+ *    that is not yet registered falls back to the system font *and caches that resolution*, so a
+ *    list mounted a frame early keeps the wrong face until something invalidates it. Gating here
+ *    is one line; the alternative is a cache-busting mechanism that exists for no other reason.
  */
 export default function RootLayout() {
   const scheme = useColorScheme()
+  const [fontsLoaded, fontError] = useFonts(INTER)
+
+  // `|| fontError` rather than `fontsLoaded` alone: a failed load leaves `loaded` false forever, so
+  // gating on it by itself turns a missing font into a permanently blank app. Carrying on renders
+  // the system face instead, which is what `FontResolver` falls back to anyway — and it logs.
+  if (!fontsLoaded && !fontError) return null
 
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>

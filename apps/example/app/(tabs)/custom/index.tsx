@@ -7,6 +7,7 @@ import {
   type FontDesign,
 } from '@rngui/collection-view'
 import { StyleSheet } from 'react-native-unistyles'
+import { INTER_FAMILY } from '../../../src/fonts'
 
 const SCHEMES: readonly ColorScheme[] = ['system', 'light', 'dark']
 const DESIGNS: readonly FontDesign[] = [
@@ -16,6 +17,16 @@ const DESIGNS: readonly FontDesign[] = [
   'monospaced',
 ]
 const VARIANTS = ['grouped', 'inverted'] as const
+const FACES = ['system', 'Inter'] as const
+
+/**
+ * Points on Inter's `wght` axis, including two no static family could offer.
+ *
+ * `350` and `550` are the entire argument for variable fonts: `FontSpec.weight` can only reach the
+ * nine named weights, because those are the only files a static family ships. An axis is
+ * continuous, so these are as real as `400`.
+ */
+const WEIGHT_AXIS = [300, 350, 400, 550, 700, 900] as const
 
 /**
  * The theming playground, and eventually the custom-components screen.
@@ -33,6 +44,23 @@ export default function CustomScreen() {
   const [design, setDesign] = useState<FontDesign>('rounded')
   const [variant, setVariant] = useState<(typeof VARIANTS)[number]>('grouped')
   const [expanded, setExpanded] = useState(false)
+  const [face, setFace] = useState<(typeof FACES)[number]>('system')
+  const [weightAxis, setWeightAxis] =
+    useState<(typeof WEIGHT_AXIS)[number]>(400)
+
+  /**
+   * One spec, shared by rows, headers and footers.
+   *
+   * `family` and `design` are mutually exclusive by nature rather than by rule: a
+   * `UIFontDescriptor.SystemDesign` is a property of the *system* font, so once a bundled face is
+   * named there is nothing for it to apply to — and `FontResolver` returns the named font before
+   * it ever looks at the design. Sending both would not break anything; it would just quietly mean
+   * one of them.
+   */
+  const font =
+    face === 'Inter'
+      ? { family: INTER_FAMILY, variations: `wght=${weightAxis}` }
+      : { design }
 
   return (
     <CollectionView.Root
@@ -41,9 +69,13 @@ export default function CustomScreen() {
       appearance={{
         tintColor: '#AF52DE',
         headerTextColor: '#AF52DE',
-        font: { design },
-        headerFont: { design, weight: 'semibold' },
-        footerFont: { design },
+        font,
+        // The header's own weight is layered *over* the shared spec, field by field — so a header
+        // stays heavier than its rows whichever face is selected. With Inter that means the axis
+        // and the named weight are both in play, and the named one wins because it resolves the
+        // face while the axis only varies it.
+        headerFont: { ...font, weight: 'semibold' },
+        footerFont: font,
       }}
       // Only the tint differs in dark mode. Everything else falls back to the light values field
       // by field, which is why setting one colour here does not mean restating the rest.
@@ -66,13 +98,37 @@ export default function CustomScreen() {
       </CollectionView.Section>
 
       <CollectionView.Section
-        header="Font design"
-        footer="UIFontDescriptor.SystemDesign — the ui-rounded, ui-serif and ui-monospace equivalents. Applied to row labels, headers and footers, and scaled with Dynamic Type."
+        header="Typeface"
+        footer="`system` uses SF and the design below. `Inter` is a bundled variable font, registered by expo-font and resolved natively by name — no asset pipeline, no per-row styling, and the design row stops applying because a system design is a property of the system font."
       >
-        <CollectionView.Host id="design" height={64}>
-          <Chips options={DESIGNS} value={design} onChange={setDesign} />
+        <CollectionView.Host id="face" height={64}>
+          <Chips options={FACES} value={face} onChange={setFace} />
         </CollectionView.Host>
       </CollectionView.Section>
+
+      {face === 'system' ? (
+        <CollectionView.Section
+          header="Font design"
+          footer="UIFontDescriptor.SystemDesign — the ui-rounded, ui-serif and ui-monospace equivalents. Applied to row labels, headers and footers, and scaled with Dynamic Type."
+        >
+          <CollectionView.Host id="design" height={64}>
+            <Chips options={DESIGNS} value={design} onChange={setDesign} />
+          </CollectionView.Host>
+        </CollectionView.Section>
+      ) : (
+        <CollectionView.Section
+          header="Weight axis"
+          footer="Inter's `wght` axis, as `variations: 'wght=550'`. Applied through Core Text, which UIKit has no API for. 350 and 550 are the point: `weight` can only name the nine weights a static family ships, and an axis is continuous."
+        >
+          <CollectionView.Host id="weight" height={64}>
+            <Chips
+              options={WEIGHT_AXIS}
+              value={weightAxis}
+              onChange={setWeightAxis}
+            />
+          </CollectionView.Host>
+        </CollectionView.Section>
+      )}
 
       <CollectionView.Section
         header="Variant"
@@ -147,7 +203,7 @@ export default function CustomScreen() {
   )
 }
 
-function Chips<T extends string>({
+function Chips<T extends string | number>({
   options,
   value,
   onChange,

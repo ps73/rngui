@@ -152,6 +152,13 @@ enum FontResolver {
    * Core Text keys variations by a four-character-code axis identifier, so each tag is packed
    * into an integer. Axes the face does not expose are simply ignored by Core Text, which is
    * what makes one spec safe to share between a variable font and a static one.
+   *
+   * **The name attribute has to go, and that is the whole trick.** A descriptor that names a
+   * concrete face — which is exactly what `UIFont(name:)` produces — is matched by *name*, and
+   * Core Text then ignores the variation attribute completely. The symptom is silent and
+   * convincing: the font is right, the axis does nothing, and `wght=350` and `wght=900` render
+   * byte-identically. Rebuilding around the family keeps the face and lets the axes decide the
+   * instance.
    */
   private static func applying(variations: String, to font: UIFont) -> UIFont {
     var axes: [Int: CGFloat] = [:]
@@ -169,9 +176,17 @@ enum FontResolver {
 
     guard !axes.isEmpty else { return font }
 
-    let attribute = kCTFontVariationAttribute as UIFontDescriptor.AttributeName
-    let descriptor = font.fontDescriptor.addingAttributes([attribute: axes])
-    return UIFont(descriptor: descriptor, size: font.pointSize)
+    var attributes = font.fontDescriptor.fontAttributes
+    attributes.removeValue(forKey: .name)
+    attributes[.family] = font.familyName
+    attributes[kCTFontVariationAttribute as UIFontDescriptor.AttributeName] = axes
+
+    let descriptor = UIFontDescriptor(fontAttributes: attributes)
+    let varied = UIFont(descriptor: descriptor, size: font.pointSize)
+
+    // A family that turns out not to be variable comes back as some member of itself, which is
+    // still the right face — so there is nothing to detect and nothing to fall back to.
+    return varied
   }
 
   private static func fourCharCode(_ tag: String) -> Int? {

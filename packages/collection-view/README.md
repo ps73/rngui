@@ -135,6 +135,15 @@ Fields: `background` · `backgroundGradient` · `rowBackground` · `separator` �
 `{ family, design, size, weight, variations, scaled }`, where `design` is
 `default | rounded | serif | monospaced` — the `ui-rounded` family and friends.
 
+`family` is a font your app registered — with `expo-font`, the face is handed to Core Text and
+resolved here by name, so no per-row styling is involved. Naming one makes `design` moot: a system
+design is a property of the _system_ font, and there is nothing for it to apply to.
+
+`variations` drives a variable font's axes, written flat: `'wght=550,opsz=20'`. This is the only
+way to reach a weight that is not one of the nine `weight` names, because those nine are the only
+files a static family ships — an axis is continuous, so `wght=350` is as real as `wght=400`. Axes
+the face does not expose are ignored, which makes one spec safe to share with a static family.
+
 **The two appearances resolve natively, not in JavaScript.** Each colour crosses as a light/dark
 pair and becomes a `UIColor(dynamicProvider:)`, so switching interface style restyles the whole list
 without a React render. `darkAppearance` deliberately does _not_ inherit `appearance` field by
