@@ -1,10 +1,11 @@
 // Must run before any component renders — it registers the Unistyles themes.
 import '../src/unistyles'
 
-import { useColorScheme } from 'react-native'
+import { StyleSheet, useColorScheme } from 'react-native'
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useFonts } from 'expo-font'
+import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { INTER } from '../src/fonts'
 
 /**
@@ -33,6 +34,11 @@ import { INTER } from '../src/fonts'
  *    that is not yet registered falls back to the system font *and caches that resolution*, so a
  *    list mounted a frame early keeps the wrong face until something invalidates it. Gating here
  *    is one line; the alternative is a cache-busting mechanism that exists for no other reason.
+ *
+ * 5. **`GestureHandlerRootView` belongs here, once.** It is what gesture-handler documents, and
+ *    the reason is mounting: per-screen roots come and go with the screens, and a sheet or a
+ *    gesture detector mounted while its root is still settling has nothing to attach to. One at
+ *    the top of the tree is created before any screen and outlives all of them.
  */
 export default function RootLayout() {
   const scheme = useColorScheme()
@@ -44,11 +50,15 @@ export default function RootLayout() {
   if (!fontsLoaded && !fontError) return null
 
   return (
-    <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-      </Stack>
-    </ThemeProvider>
+    <GestureHandlerRootView style={styles.fill}>
+      <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <StatusBar style="auto" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+        </Stack>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   )
 }
+
+const styles = StyleSheet.create({ fill: { flex: 1 } })

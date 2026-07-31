@@ -1,7 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { Text, View } from 'react-native'
 import BottomSheet from '@gorhom/bottom-sheet'
-import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CollectionView } from '@rngui/collection-view'
 import { BottomSheetCollectionView } from '@rngui/collection-view/bottom-sheet'
@@ -79,9 +78,10 @@ export default function SheetScreen() {
   }, [])
 
   return (
-    // Required by gesture-handler, and it has to be above the sheet rather than inside it: the
-    // sheet's pan gesture and the list's own scrolling are coordinated through this view.
-    <GestureHandlerRootView style={styles.fill}>
+    // No `GestureHandlerRootView` here — there is one at the app root, which is where
+    // gesture-handler documents it. A second one per screen works until the screen remounts, and
+    // then a sheet can find itself attaching to a root that is still settling.
+    <View style={styles.fill}>
       <BottomSheet
         snapPoints={SNAP_POINTS}
         index={0}
@@ -185,7 +185,7 @@ export default function SheetScreen() {
           inset.top {insetTop} · content {contentHeight}
         </Text>
       </View>
-    </GestureHandlerRootView>
+    </View>
   )
 }
 
