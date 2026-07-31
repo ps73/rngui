@@ -339,11 +339,17 @@ export interface FontSpec {
 /**
  * How a section header paints its background.
  *
- * `blurred` is what the system Contacts app uses: the pinned header is a translucent material and
- * the rows scroll visibly *under* it, rather than disappearing behind an opaque strip. It only
- * reads correctly when the header pins, which is why the `plain` appearance is where it belongs.
+ * `blurred` and `soft` both let the rows scroll visibly *under* a pinned header rather than
+ * disappearing behind an opaque strip, and both only read correctly when the header pins — which
+ * is why the `plain` appearance is where they belong.
+ *
+ * The difference is the bottom edge. `blurred` is a material that stops in a straight line, which
+ * is how iOS drew these before 26. `soft` fades the material out instead, so there is no line at
+ * all — the same treatment `UIScrollEdgeEffect`'s soft style gives a navigation bar, and what a
+ * screen sitting under one should match.
  */
-export type HeaderBackgroundStyle = 'opaque' | 'blurred' | 'transparent'
+export type HeaderBackgroundStyle =
+  'opaque' | 'blurred' | 'soft' | 'transparent'
 
 /**
  * How a section arranges its rows.

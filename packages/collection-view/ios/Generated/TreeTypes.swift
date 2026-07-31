@@ -174,6 +174,7 @@ enum FontDesign: String, Decodable {
 enum HeaderBackgroundStyle: String, Decodable {
   case opaque
   case blurred
+  case soft
   case transparent
   /// A value this binary does not recognise.
   case unknown

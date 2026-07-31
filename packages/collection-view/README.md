@@ -69,22 +69,12 @@ second source of truth to disagree with the children.
 | `Description` | Second line. `tinted` draws it in the tint colour rather than grey |
 | `Value`       | Trailing detail text                                               |
 
-| Accessories                         |                                                        |
-| ----------------------------------- | ------------------------------------------------------ |
-| `Icon`                              | `systemImage` · `color` · `background` · `size`        |
-| `Badge`                             | `color` — the red count bubble, text as children       |
-| `Chevron` · `Checkmark` · `Spinner` |                                                        |
-| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`                 |
-
-An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
-glyph reads as an interactive control. Give it a `background` and it becomes Settings' rounded
-coloured tile instead: a white glyph on a 29pt continuous-corner square, rendered once per
-symbol-and-colour and cached, with the layout width reserved so untiled rows in the same section
-still line up.
-
-A `Badge` takes its text as children rather than a number, because iOS puts version strings and a
-bare `!` in the same bubble. It sits *inside* the disclosure chevron rather than replacing it, and
-it is not a row kind — a value row with a badge is still a value row.
+| Accessories                         |                                                  |
+| ----------------------------------- | ------------------------------------------------ |
+| `Icon`                              | `systemImage` · `color` · `background` · `size`  |
+| `Badge`                             | `color` — the red count bubble, text as children |
+| `Chevron` · `Checkmark` · `Spinner` |                                                  |
+| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`           |
 
 | Controls     |                                                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
@@ -100,6 +90,17 @@ it is not a row kind — a value row with a badge is still a value row.
 | -------------- | ------------------------------------------------------------------------ |
 | `SwipeActions` | `edge` — `'trailing'` (default) or `'leading'`                           |
 | `SwipeAction`  | `id` · `title` · `systemImage` · `style` · `backgroundColor` · `onPress` |
+
+An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
+glyph reads as an interactive control. Give it a `background` and it becomes Settings' rounded
+coloured tile instead: a white glyph on a 29pt continuous-corner square, rendered once per
+symbol-and-colour and cached, with the layout width reserved so untiled rows in the same section
+still line up. A `size` reserves its width the same way, which is what keeps a large glyph from
+eating the row's leading margin.
+
+A `Badge` takes its text as children rather than a number, because iOS puts version strings and a
+bare `!` in the same bubble. It sits _inside_ the disclosure chevron rather than replacing it, and
+it is not a row kind — a value row with a badge is still a value row.
 
 Enums: `keyboardType` is `default | numeric | decimal | email | phone | url | asciiCapable`,
 `autoCapitalize` is `none | sentences | words | characters`, `returnKeyType` is
@@ -132,6 +133,13 @@ Fields: `background` · `backgroundGradient` · `rowBackground` · `separator` �
 pair and becomes a `UIColor(dynamicProvider:)`, so switching interface style restyles the whole list
 without a React render. `darkAppearance` deliberately does _not_ inherit `appearance` field by
 field — that is what keeps "fall back to the platform's own colour" expressible.
+
+`headerBackgroundStyle` decides how a **pinned** header paints itself, so it only means anything in
+the `plain` appearance. `opaque` hides the rows passing under it; `blurred` is a material that stops
+in a straight line, which is how iOS drew these before 26; `soft` fades that material out so there
+is no line at all, matching what `UIScrollEdgeEffect`'s soft style does to a navigation bar. Under
+an iOS 26 header, `soft` is the one that belongs — two hard edges a few points apart read as a
+mistake.
 
 `inverted` swaps the grouped look: a plain background with tinted rows rather than iOS's tinted
 background with plain cards. It is a preset, so anything in `appearance` still wins.

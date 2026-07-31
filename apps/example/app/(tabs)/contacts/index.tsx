@@ -36,7 +36,10 @@ export default function ContactsScreen() {
       // Off because the scrubber already owns this edge — two rails on the same strip read as a
       // mistake even when they are inset apart.
       showsVerticalScrollIndicator={false}
-      appearance={{ headerBackgroundStyle: 'blurred' }}
+      // `soft` rather than `blurred`, to match the navigation bar above it. A hard-edged material
+      // under an iOS 26 soft scroll edge gives the screen two different bottom edges a few points
+      // apart, and the eye reads that as a mistake long before it works out why.
+      appearance={{ headerBackgroundStyle: 'soft' }}
       // Wired here because 2,000 rows is where the tracking either costs something or doesn't.
       // Note what it deliberately does *not* do: drive state. Rendering from this would mean a
       // React render per scroll frame, which is precisely the cost the native side exists to

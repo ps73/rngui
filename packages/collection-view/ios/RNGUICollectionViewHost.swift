@@ -753,18 +753,21 @@ public final class RNGUICollectionViewHost: NSObject {
       return
     }
     content.image = image
-    content.imageProperties.reservedLayoutSize = .zero
     if let size = row.imageSize {
       let side = CGFloat(size)
       content.imageProperties.preferredSymbolConfiguration =
         UIImage.SymbolConfiguration(pointSize: side)
-      // Bounded, and it has to be. An SF Symbol's rendered box is wider than its point size, and
-      // left unbounded `UIListContentConfiguration` gives the image that whole box and takes the
-      // room out of its own leading margin — so a large glyph ends up flush against the card's edge
-      // while every ordinary row beside it stays properly inset.
+      // **Both**, and neither is enough alone. An SF Symbol's rendered box is wider than its point
+      // size, so `maximumSize` is what stops the image claiming that whole box — but the leading
+      // margin is still computed against whatever the configuration decides to reserve, and left to
+      // `.zero` it reserves the natural size and eats the margin. Measured on the account row: 2pt
+      // of leading with neither, 6pt with `maximumSize` alone, and the list's standard 16pt with
+      // both. The tile path above has always set the pair, which is why it never showed this.
+      content.imageProperties.reservedLayoutSize = CGSize(width: side, height: side)
       content.imageProperties.maximumSize = CGSize(width: side, height: side)
     } else {
       content.imageProperties.preferredSymbolConfiguration = nil
+      content.imageProperties.reservedLayoutSize = .zero
       content.imageProperties.maximumSize = .zero
     }
     // Grey by default, not the list tint. A tinted glyph reads as an interactive control, and in a
@@ -1162,6 +1165,14 @@ public final class RNGUICollectionViewHost: NSObject {
         case .blurred:
           background.backgroundColor = .clear
           background.visualEffect = UIBlurEffect(style: .systemChromeMaterial)
+        case .soft:
+          background.backgroundColor = .clear
+          // Reused when this header already has one. The registration handler runs on dequeue and
+          // on every reconfigure, and a blur view allocated per pass would be a new one on every
+          // tree update for every visible section.
+          background.customView =
+            (view.backgroundConfiguration?.customView as? SoftHeaderBackgroundView)
+            ?? SoftHeaderBackgroundView()
         case .transparent:
           background.backgroundColor = .clear
         case .opaque, .unknown:
