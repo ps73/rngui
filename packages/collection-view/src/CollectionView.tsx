@@ -2,6 +2,7 @@ import {
   useCallback,
   useMemo,
   useRef,
+  useState,
   type ComponentRef,
   type ReactNode,
   type Ref,
@@ -14,7 +15,7 @@ import {
   type ViewProps,
 } from 'react-native'
 import NativeCollectionView from './specs/RNGUICollectionViewNativeComponent'
-import { createRegistry, serialize } from './serialize'
+import { EMPTY_MEASUREMENTS, createRegistry, serialize } from './serialize'
 import {
   AppearanceProvider,
   INVERTED_DARK,
@@ -324,10 +325,37 @@ export function Root({
 }: RootProps) {
   warnIfAndroid()
 
+  /**
+   * Heights read off mounted `Host` subtrees, for the rows that did not state one.
+   *
+   * State rather than a ref, because a measurement has to reach native, and the only way there
+   * is a re-serialized tree. It settles after one extra render per row: measure, re-render with
+   * the height in the `RowSpec`, and `onLayout` then reports the same number and is ignored.
+   */
+  const [measured, setMeasured] = useState(EMPTY_MEASUREMENTS)
+
   const serialized = useMemo(() => {
     const registry = createRegistry()
-    return { registry, ...serialize(children, registry) }
-  }, [children])
+    return { registry, ...serialize(children, registry, measured) }
+  }, [children, measured])
+
+  /**
+   * Files a measurement, and does nothing at all if it has not moved.
+   *
+   * The bail-out is load-bearing rather than an optimisation: this fires again on the render
+   * the measurement itself caused, so returning a new Map unconditionally would re-serialize
+   * the tree forever. Rounded because Yoga reports subpixel values that jitter by hundredths
+   * between layouts, and each jitter would otherwise be a full tree update.
+   */
+  const handleHostLayout = useCallback((rowId: string, height: number) => {
+    const rounded = Math.round(height)
+    setMeasured((current) => {
+      if (current.get(rowId) === rounded) return current
+      const next = new Map(current)
+      next.set(rowId, rounded)
+      return next
+    })
+  }, [])
 
   const resolved = useMemo(() => {
     // The dark side deliberately does *not* inherit `appearance` here — native falls back
@@ -548,9 +576,23 @@ export function Root({
                 // `RowSpec.hostIndex`. Without it React Native is free to flatten the wrapper away
                 // and the indices stop lining up.
                 collapsable={false}
+                // Only for a row that stated no height. Attaching it to a constrained wrapper
+                // would just report the constraint back — the measurement has to come from a
+                // wrapper Yoga is free to size to its content.
+                onLayout={
+                  child.height != null
+                    ? undefined
+                    : (event) =>
+                        handleHostLayout(
+                          child.rowId,
+                          event.nativeEvent.layout.height
+                        )
+                }
                 style={[
                   styles.hosted,
                   {
+                    // Left undefined when self-measuring, which is what lets the absolute wrapper
+                    // take its content's height instead of imposing one.
                     height: child.height,
                     // Yoga lays this subtree out here, against the collection view's full width,
                     // but the cell it ends up in is inset by the grouped style's margin. The native

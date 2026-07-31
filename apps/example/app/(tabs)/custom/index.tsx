@@ -32,6 +32,7 @@ export default function CustomScreen() {
   const [colorScheme, setColorScheme] = useState<ColorScheme>('system')
   const [design, setDesign] = useState<FontDesign>('rounded')
   const [variant, setVariant] = useState<(typeof VARIANTS)[number]>('grouped')
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <CollectionView.Root
@@ -94,6 +95,32 @@ export default function CustomScreen() {
           <CollectionView.Label>Bottom sheet</CollectionView.Label>
           <CollectionView.Chevron />
         </CollectionView.Row>
+        <CollectionView.Row
+          id="windowing"
+          onPress={() => router.push('/custom/windowing')}
+        >
+          <CollectionView.Icon systemImage="rectangle.stack" />
+          <CollectionView.Label>Host windowing</CollectionView.Label>
+          <CollectionView.Chevron />
+        </CollectionView.Row>
+      </CollectionView.Section>
+
+      <CollectionView.Section
+        header="Self-measuring host"
+        footer="This row states no height. Root reads it off the mounted subtree with onLayout and sends it back down, so the cell resizes when the content does — tap to see it. State a height whenever you know it: measuring costs one extra render, which on first mount is a visible settle."
+      >
+        <CollectionView.Host id="measured">
+          <Pressable
+            onPress={() => setExpanded((current) => !current)}
+            style={styles.measured}
+          >
+            <Text style={styles.measuredText}>
+              {expanded
+                ? 'Tap to shrink. A hosted row has no intrinsic content size — Fabric lays this subtree out with Yoga, so an estimated cell would measure it as zero and the height has to travel back through JavaScript. That round trip is what makes this paragraph able to grow the row it lives in, rather than being clipped by a number someone hard-coded months ago.'
+                : 'Tap to grow.'}
+            </Text>
+          </Pressable>
+        </CollectionView.Host>
       </CollectionView.Section>
 
       <CollectionView.Section header="Themed rows">
@@ -181,5 +208,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   chipLabelActive: {
     color: '#FFFFFF',
+  },
+  measured: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  measuredText: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: theme.colors.label,
   },
 }))

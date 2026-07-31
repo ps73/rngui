@@ -313,9 +313,13 @@ struct RowSpec: Decodable, Equatable {
   var tintColor: String?
   /// For `host` rows: which mounted React child belongs in this cell, by mount order.
   var hostIndex: Int?
-  /// Row height in points. Required for `host` rows until self-measurement lands: Fabric
-  /// lays the child out with Yoga, so the view has no `intrinsicContentSize` and an
-  /// `.estimated` cell measures it as zero.
+  /// Row height in points.
+  ///
+  /// For a `host` row this is the space the cell reserves, and it is always a number JavaScript
+  /// decided — never something native measured. Fabric lays the child out with Yoga, so the view
+  /// has no `intrinsicContentSize` and an `.estimated` cell would measure it as zero. Either the
+  /// caller stated a height, or `Root` measured the mounted subtree with `onLayout` and sent the
+  /// result back through here.
   var height: Double?
   /// `switch` state, and the checked state of a `checkbox` or `radio` accessory.
   var on: Bool?

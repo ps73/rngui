@@ -198,9 +198,13 @@ export interface RowSpec {
    */
   hostIndex?: IntValue
   /**
-   * Row height in points. Required for `host` rows until self-measurement lands: Fabric
-   * lays the child out with Yoga, so the view has no `intrinsicContentSize` and an
-   * `.estimated` cell measures it as zero.
+   * Row height in points.
+   *
+   * For a `host` row this is the space the cell reserves, and it is always a number JavaScript
+   * decided — never something native measured. Fabric lays the child out with Yoga, so the view
+   * has no `intrinsicContentSize` and an `.estimated` cell would measure it as zero. Either the
+   * caller stated a height, or `Root` measured the mounted subtree with `onLayout` and sent the
+   * result back through here.
    */
   height?: number
 

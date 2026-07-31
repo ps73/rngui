@@ -92,8 +92,35 @@ export function createRegistry(): HandlerRegistry {
 /** A `<CollectionView.Host>` child, paired with the height its row reserves. */
 export interface HostedChild {
   node: ReactNode
-  height: number
+  /**
+   * `undefined` when the caller stated no height, which is what tells `Root` to measure this
+   * subtree rather than constrain it. The wrapper must then be left unconstrained vertically —
+   * giving it a height is what would make `onLayout` report that height straight back.
+   */
+  height: number | undefined
+  /** The row this child belongs to, so a measurement can be filed against it. */
+  rowId: string
 }
+
+/**
+ * Heights measured from mounted subtrees, keyed by row id.
+ *
+ * Threaded in rather than merged afterwards because the height belongs in the `RowSpec`, and
+ * walking the finished section tree to patch it would mean knowing the shape twice.
+ */
+export type MeasuredHeights = ReadonlyMap<string, number>
+
+/**
+ * What a `host` row reserves before anything has measured it.
+ *
+ * Not zero, which is what an unset height used to mean: a zero-height row is not laid out, so
+ * nothing about it is visible until the measurement lands, and a list of them starts as a stack
+ * of nothing. One standard row's worth is wrong too, but it is wrong by less and it settles.
+ */
+export const UNMEASURED_HOST_HEIGHT = 44
+
+/** Shared so that "nothing measured yet" is a stable reference and never re-runs a memo. */
+export const EMPTY_MEASUREMENTS: MeasuredHeights = new Map()
 
 export interface Serialized {
   sections: SectionSpec[]
@@ -197,7 +224,8 @@ function serializeRow(
   element: AnyElement,
   rowId: string,
   registry: HandlerRegistry,
-  hosted: HostedChild[]
+  hosted: HostedChild[],
+  measured: MeasuredHeights
 ): RowSpec {
   const tag = tagOf(element)
   const isHost = tag === 'host'
@@ -218,9 +246,14 @@ function serializeRow(
   if (isHost) {
     row.kind = 'host'
     row.hostIndex = hosted.length
+    // A stated height wins outright; otherwise use whatever the last measurement found, and the
+    // placeholder until there has been one. `row.height` is never left unset for a host row —
+    // native has nothing to fall back on.
+    row.height = props.height ?? measured.get(rowId) ?? UNMEASURED_HOST_HEIGHT
     hosted.push({
       node: childrenOf(element),
-      height: props.height ?? 0,
+      height: props.height,
+      rowId,
     })
     return row
   }
@@ -470,7 +503,8 @@ const ROW_TAGS: ReadonlySet<string> = new Set(['row', 'host'])
  */
 export function serialize(
   children: ReactNode,
-  registry: HandlerRegistry
+  registry: HandlerRegistry,
+  measured: MeasuredHeights = EMPTY_MEASUREMENTS
 ): Serialized {
   const sections: SectionSpec[] = []
   const hosted: HostedChild[] = []
@@ -486,7 +520,13 @@ export function serialize(
 
   const buildRows = (rows: AnyElement[], sectionId: string): RowSpec[] =>
     rows.map((child, index) =>
-      serializeRow(child, rowIdFor(child, sectionId, index), registry, hosted)
+      serializeRow(
+        child,
+        rowIdFor(child, sectionId, index),
+        registry,
+        hosted,
+        measured
+      )
     )
 
   let loose: AnyElement[] = []

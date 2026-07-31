@@ -20,6 +20,19 @@ export default function CustomLayout() {
           headerTransparent: false,
         }}
       />
+      {/*
+        The readout above the list is a sibling of it, so the list is no longer the screen's first
+        descendant — which is the one thing the blurred large-title header needs. Opting out keeps
+        the screen honest rather than shipping a header that silently does not animate.
+      */}
+      <Stack.Screen
+        name="windowing"
+        options={{
+          title: 'Host windowing',
+          headerLargeTitle: false,
+          headerTransparent: false,
+        }}
+      />
     </Stack>
   )
 }

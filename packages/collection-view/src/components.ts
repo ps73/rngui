@@ -67,13 +67,19 @@ export const Row = tagged<RowProps>('row', 'CollectionView.Row')
 export interface HostProps extends Children {
   id?: string
   /**
-   * Required, for now.
+   * How much vertical space the row reserves. Omit it and the subtree measures itself.
    *
-   * Fabric lays the child out with Yoga, so the view it hands us has no
-   * `intrinsicContentSize` — an `.estimated` cell measures it as zero. Until the
-   * `onLayout` round-trip lands, the row has to be told how much space to reserve.
+   * Fabric lays the child out with Yoga, so the view it hands us has no `intrinsicContentSize`
+   * and an `.estimated` cell would measure it as zero — the height has to come from
+   * JavaScript either way. Left unset, `Root` reads it off the mounted subtree with `onLayout`
+   * and sends it back down.
+   *
+   * **Stating it is still worth doing whenever the number is known.** Measuring costs a
+   * render: the row is laid out at a placeholder height for one frame before the real value
+   * arrives, which on first mount is a visible settle. A chart told `height={160}` never does
+   * that.
    */
-  height: number
+  height?: number
   onPress?: () => void
 }
 /**
