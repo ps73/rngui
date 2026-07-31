@@ -1411,6 +1411,10 @@ public final class RNGUICollectionViewHost: NSObject {
     updateSectionIndex()
   }
 
+  @objc public func setScrollEnabled(_ enabled: Bool) {
+    collectionView.isScrollEnabled = enabled
+  }
+
   /// Negative is the sentinel for "unset" — see the note on the prop. Any other value is passed
   /// through untouched, including `0`, which is a bottom sheet asking the list to stop dead.
   @objc public func setDecelerationRate(_ rate: Double) {
@@ -1455,6 +1459,16 @@ public final class RNGUICollectionViewHost: NSObject {
     // this the second pass would set it again.
     guard target != collectionView.contentOffset else { return }
     collectionView.setContentOffset(target, animated: animated)
+
+    // Unanimated, UIKit runs none of the end-of-scroll workflow: no `scrollViewDidEndScrollingAnimation`,
+    // and not reliably a `scrollViewDidScroll` either. `RCTScrollViewComponentView` runs it by hand
+    // for exactly this reason (`_handleFinishedScrolling:`), and a bottom sheet is written against
+    // that behaviour — it waits for a momentum end to decide the list has settled. Without it the
+    // sheet keeps correcting a list that already stopped, which is what makes an overscroll judder.
+    if !animated {
+      emit(onScroll)
+      emit(onMomentumScrollEnd)
+    }
   }
 
   @objc public func setTracksVisibleRange(_ tracks: Bool) {
@@ -1817,23 +1831,6 @@ extension RNGUICollectionViewHost: UICollectionViewDelegate {
     updateSectionIndexInsets()
   }
 
-  /**
-   * **Known gap: the last event after a cancelled rubber band is stale.**
-   *
-   * Collapse a `@gorhom/bottom-sheet` by dragging down on a list that is already at the top and the
-   * scroll view rubber-bands, the sheet's pan takes the gesture over, and the offset returns to 0 —
-   * but the frames between the rubber-banded value and 0 never reach this method, so the last
-   * position JavaScript heard about is the discarded one (about -67pt in the example screen).
-   * Confirmed by pixel-diffing the list at both readings: the content is identical, so the scroll
-   * view itself is right and only the report is behind.
-   *
-   * Two fixes were tried and neither moved it: emitting after a programmatic `scrollTo`, and
-   * emitting from the container's `layoutSubviews`. Whatever restores the offset does so without
-   * calling `scrollViewDidScroll` *and* without relaying out the container. Left documented rather
-   * than papered over with a third guess. Nothing observable depends on it — the sheet reads its
-   * own state, not this — but a `onScroll` consumer such as a parallax header would be wrong until
-   * the next real scroll.
-   */
   private func emit(_ block: ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?) {
     guard tracksScroll, let block else { return }
     block(

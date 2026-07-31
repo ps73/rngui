@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Text, View } from 'react-native'
 import BottomSheet from '@gorhom/bottom-sheet'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CollectionView } from '@rngui/collection-view'
 import { BottomSheetCollectionView } from '@rngui/collection-view/bottom-sheet'
 import { StyleSheet } from 'react-native-unistyles'
@@ -25,9 +26,23 @@ import { StyleSheet } from 'react-native-unistyles'
 const SNAP_POINTS = ['35%', '92%']
 
 export default function SheetScreen() {
+  const insets = useSafeAreaInsets()
   const [offsetY, setOffsetY] = useState(0)
   const [insetTop, setInsetTop] = useState(0)
   const [contentHeight, setContentHeight] = useState(0)
+
+  /**
+   * How many times the scroll direction has flipped, which is the only objective way to see a
+   * judder from outside the device.
+   *
+   * A settling bounce reverses **once**: past the edge, then back. A list being fought over —
+   * the sheet correcting an offset the scroll view is still animating — reverses every few
+   * frames, and the count runs away. Whether it looks smooth is a matter of opinion; whether
+   * this number jumps by two or by forty is not.
+   */
+  const [reversals, setReversals] = useState(0)
+  const lastOffset = useRef(0)
+  const lastDirection = useRef(0)
 
   // `{ nativeEvent }` rather than a bare payload: gorhom re-wraps the reanimated event before
   // handing it on. `BottomSheetCollectionViewProps` types it that way for exactly this reason.
@@ -38,7 +53,22 @@ export default function SheetScreen() {
         contentInset: { top: number }
       }
     }) => {
-      setOffsetY(Math.round(event.nativeEvent.contentOffset.y))
+      const y = event.nativeEvent.contentOffset.y
+      // A dead band, so a sub-pixel wobble in a resting scroll view is not counted as motion.
+      const delta = y - lastOffset.current
+      if (Math.abs(delta) > 0.5) {
+        const direction = Math.sign(delta)
+        if (
+          lastDirection.current !== 0 &&
+          direction !== lastDirection.current
+        ) {
+          setReversals((count) => count + 1)
+        }
+        lastDirection.current = direction
+        lastOffset.current = y
+      }
+
+      setOffsetY(Math.round(y))
       setInsetTop(Math.round(event.nativeEvent.contentInset.top))
     },
     []
@@ -52,15 +82,6 @@ export default function SheetScreen() {
     // Required by gesture-handler, and it has to be above the sheet rather than inside it: the
     // sheet's pan gesture and the list's own scrolling are coordinated through this view.
     <GestureHandlerRootView style={styles.fill}>
-      <View style={styles.readout}>
-        <Text style={styles.readoutLabel}>contentOffset.y</Text>
-        <Text style={styles.readoutValue}>{offsetY}</Text>
-        <Text style={styles.readoutLabel}>adjustedContentInset.top</Text>
-        <Text style={styles.readoutValue}>{insetTop}</Text>
-        <Text style={styles.readoutLabel}>contentSize.height</Text>
-        <Text style={styles.readoutValue}>{contentHeight}</Text>
-      </View>
-
       <BottomSheet
         snapPoints={SNAP_POINTS}
         index={0}
@@ -68,12 +89,33 @@ export default function SheetScreen() {
         // for a sheet that should hug short content, and would fight a scroll view that wants all
         // the room it can get. `onContentSizeChange` is wired either way; the readout proves it.
         enableDynamicSizing={false}
+        // The sheet, not the list, owns the surface. Gorhom's default is an opaque white card, so
+        // a grouped list inside it reads as a grey panel floating on a white one — two surfaces
+        // where iOS has one.
+        backgroundStyle={styles.sheetBackground}
+        // The list is the whole sheet, grabber included. Gorhom's handle is a *sibling* laid out
+        // above the content, so keeping it would mean the list starts below it and content is
+        // clipped at a hard edge rather than sliding under the grabber the way it does in Maps.
+        // The grabber below is an overlay instead; dragging the list still moves the sheet, which
+        // is what the handle's own pan gesture was for.
+        handleComponent={null}
       >
         <BottomSheetCollectionView
           onScroll={handleScroll}
           onContentSizeChange={handleContentSizeChange}
-          appearance={{ tintColor: '#AF52DE', headerTextColor: '#AF52DE' }}
+          // Transparent so the sheet's rounded background shows through: the collection view is a
+          // square opaque rectangle, and left opaque it paints its own corners over the sheet's.
+          appearance={{
+            background: 'transparent',
+            tintColor: '#AF52DE',
+            headerTextColor: '#AF52DE',
+          }}
           darkAppearance={{ tintColor: '#BF5AF2', headerTextColor: '#BF5AF2' }}
+          // The sheet reaches the bottom of the screen, under a floating tab bar and the home
+          // indicator, and `contentInsetAdjustmentBehavior` is pinned to `never` inside a sheet —
+          // so nothing folds the safe area in on the list's behalf. Bottom only: a *top* inset
+          // would move the list's resting offset off `0`, which is the value the sheet pins to.
+          contentInset={{ bottom: insets.bottom }}
         >
           <CollectionView.Section
             header="Drag me"
@@ -108,7 +150,30 @@ export default function SheetScreen() {
             </CollectionView.Row>
           </CollectionView.Section>
         </BottomSheetCollectionView>
+
+        {/*
+          The grabber, floating over the list rather than laid out above it. A sibling of the
+          scrollable inside the sheet's content, absolutely positioned and non-interactive — the
+          drag it used to serve is handled by the list itself.
+        */}
+        <View pointerEvents="none" style={styles.grabber}>
+          <View style={styles.grabberBar} />
+        </View>
       </BottomSheet>
+
+      {/*
+        After the sheet rather than before it, so it stays legible at the tallest detent — the
+        whole point is to read these while the sheet is covering the screen.
+      */}
+      <View pointerEvents="none" style={styles.readout}>
+        <Text style={styles.readoutLabel}>contentOffset.y</Text>
+        <Text style={styles.readoutValue}>{offsetY}</Text>
+        <Text style={styles.readoutLabel}>direction reversals</Text>
+        <Text style={styles.readoutValue}>{reversals}</Text>
+        <Text style={styles.readoutLabel}>
+          inset.top {insetTop} · content {contentHeight}
+        </Text>
+      </View>
     </GestureHandlerRootView>
   )
 }
@@ -117,9 +182,33 @@ const ROWS = Array.from({ length: 40 }, (_, index) => `Row ${index + 1}`)
 
 const styles = StyleSheet.create((theme) => ({
   fill: { flex: 1 },
+  sheetBackground: {
+    backgroundColor: theme.colors.background,
+  },
+  grabber: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  grabberBar: {
+    width: 36,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: theme.colors.separator,
+  },
   readout: {
-    padding: 20,
+    position: 'absolute',
+    top: 8,
+    left: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
     gap: 2,
+    backgroundColor: theme.colors.rowBackground,
   },
   readoutLabel: {
     fontSize: 12,

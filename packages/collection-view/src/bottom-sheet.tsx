@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import {
+  SCROLLABLE_STATUS,
   SCROLLABLE_TYPE,
   createBottomSheetScrollableComponent,
+  useBottomSheetInternal,
 } from '@gorhom/bottom-sheet'
-import Animated from 'react-native-reanimated'
+import Animated, { runOnJS, useAnimatedReaction } from 'react-native-reanimated'
 import { Root, type RootProps, type ScrollMetrics } from './CollectionView'
 
 /**
@@ -36,6 +39,8 @@ const IGNORED_SCROLLABLE_PROPS = [
 function BottomSheetCollectionViewAdapter(
   props: RootProps & Record<string, unknown>
 ) {
+  const scrollEnabled = useLockedBySheet()
+
   const forwarded: Record<string, unknown> = {}
   for (const key of Object.keys(props)) {
     if (!(IGNORED_SCROLLABLE_PROPS as readonly string[]).includes(key)) {
@@ -51,13 +56,56 @@ function BottomSheetCollectionViewAdapter(
       // list reads as a negative number. Gorhom pins the list by calling `scrollTo(0, 0)`, so any
       // offset between "the top" and `0` is a list that jumps by exactly that much every time the
       // sheet locks it.
+      //
+      // The cost is that nothing folds the *bottom* safe area in either, so a sheet that reaches
+      // the screen edge will run its last rows under the home indicator and any floating tab bar.
+      // Pass `contentInset={{ bottom }}` for that. It has to be the caller's call rather than a
+      // default here: only the app knows whether a tab bar is in the way, and this package does
+      // not depend on react-native-safe-area-context. A *top* inset is the one thing to avoid —
+      // it moves the resting offset off `0`, which is the value the sheet pins to.
       contentInsetAdjustmentBehavior="never"
       // A reanimated handler is attached by view tag, so there is no prop for `Root` to infer
       // this from. Without it the sheet receives no scroll events at all and never unlocks.
       tracksScroll
+      scrollEnabled={scrollEnabled}
       {...(forwarded as RootProps)}
     />
   )
+}
+
+/**
+ * `false` for as long as the sheet, not the list, owns the vertical drag.
+ *
+ * **This is the fix for a judder, and the judder came from an assumption gorhom makes that cannot
+ * hold here.** Gorhom locks a list by leaving it scrollable and yanking the offset back to the top
+ * on every scroll event, which works because react-native-gesture-handler makes the scrollable's
+ * own pan recognizer *simultaneous* with the sheet's — and it arranges that by reaching inside an
+ * `RCTScrollViewComponentView` for its `UIScrollView` (`RNGestureHandler.mm`, one hard
+ * `isKindOfClass:` with no extension point). This component is not one, so both gestures activate
+ * independently: the list scrolls under the finger while the sheet moves, and gorhom's correction
+ * chases it every frame. Measured at ten direction reversals in a single half-second drag.
+ *
+ * Removing the second gesture rather than correcting it afterwards costs nothing gorhom relies on:
+ * it already treats a locked list as one that must not move, and it still gets its scroll events
+ * the moment the sheet reaches its tallest detent and unlocks.
+ *
+ * A React state update rather than an animated prop, because this changes on lock transitions —
+ * a handful of times per gesture — not per frame. `animatedScrollableStatus` is the same value
+ * gorhom drives `decelerationRate` from, so the two can never disagree about what is locked.
+ */
+function useLockedBySheet(): boolean {
+  const { animatedScrollableStatus } = useBottomSheetInternal()
+  const [enabled, setEnabled] = useState(true)
+
+  useAnimatedReaction(
+    () => animatedScrollableStatus.value === SCROLLABLE_STATUS.UNLOCKED,
+    (next, previous) => {
+      if (next !== previous) runOnJS(setEnabled)(next)
+    },
+    [animatedScrollableStatus]
+  )
+
+  return enabled
 }
 
 const AnimatedCollectionView = Animated.createAnimatedComponent(

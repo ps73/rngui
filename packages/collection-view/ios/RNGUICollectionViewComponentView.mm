@@ -336,6 +336,10 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
   // installs an event emitter and there is no way to ask whether anything is listening, so
   // without being told, the list would post an event on every run-loop turn of every scroll for
   // the overwhelming majority of lists that never listen.
+  if (oldViewProps.scrollEnabled != newViewProps.scrollEnabled) {
+    [_host setScrollEnabled:newViewProps.scrollEnabled];
+  }
+
   if (oldViewProps.decelerationRate != newViewProps.decelerationRate) {
     [_host setDecelerationRate:newViewProps.decelerationRate];
   }

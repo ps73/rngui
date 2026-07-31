@@ -132,6 +132,11 @@ class RNGUICollectionViewManager :
     value: String?,
   ) = Unit
 
+  override fun setScrollEnabled(
+    view: RNGUICollectionViewView,
+    value: Boolean,
+  ) = Unit
+
   override fun setDecelerationRate(
     view: RNGUICollectionViewView,
     value: Float,

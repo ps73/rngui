@@ -212,6 +212,19 @@ export interface NativeProps extends ViewProps {
   // -------------------------------------------------------------------------
 
   /**
+   * Whether the list scrolls at all. As `ScrollView` has it.
+   *
+   * Not only a convenience: it is how `@rngui/collection-view/bottom-sheet` keeps a sheet and its
+   * list from fighting. Gorhom's design assumes the scrollable's own pan recognizer can be made
+   * *simultaneous* with the sheet's — react-native-gesture-handler arranges that by finding the
+   * `UIScrollView` inside an `RCTScrollViewComponentView`, which this component is not and cannot
+   * be. Both gestures therefore run at once: the list scrolls under the finger while the sheet
+   * moves, and the sheet's per-frame correction fights it. Turning scrolling off for as long as the
+   * sheet owns the drag removes the second gesture instead of correcting it afterwards.
+   */
+  scrollEnabled?: WithDefault<boolean, true>
+
+  /**
    * `UIScrollView.decelerationRate`, raw. Negative means "leave UIKit's own value alone".
    *
    * A number rather than the `'normal' | 'fast'` enum it looks like it should be, because
