@@ -34,6 +34,8 @@ export interface SettingsRow {
   value?: string
   /** Rows whose control is a switch rather than a disclosure, like Airplane Mode. */
   toggle?: boolean
+  /** The red count bubble — General carries one whenever an update is waiting. */
+  badge?: string
 }
 
 export interface SettingsSection {
@@ -119,6 +121,7 @@ export const SETTINGS_SECTIONS: SettingsSection[] = [
         title: 'General',
         systemImage: 'gear',
         tile: 'gray',
+        badge: '1',
       },
       {
         id: 'control-centre',

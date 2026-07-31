@@ -18,6 +18,8 @@
           "imageColor": "Tree.sections[0].rows[0].imageColor",
           "imageBackground": "Tree.sections[0].rows[0].imageBackground",
           "imageSize": 11,
+          "badge": "Tree.sections[0].rows[0].badge",
+          "badgeColor": "Tree.sections[0].rows[0].badgeColor",
           "secondaryLabelTinted": true,
           "font": {
             "family": "Tree.sections[0].rows[0].font.family",

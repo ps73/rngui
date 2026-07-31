@@ -72,6 +72,7 @@ second source of truth to disagree with the children.
 | Accessories                         |                                                        |
 | ----------------------------------- | ------------------------------------------------------ |
 | `Icon`                              | `systemImage` · `color` · `background` · `size`        |
+| `Badge`                             | `color` — the red count bubble, text as children       |
 | `Chevron` · `Checkmark` · `Spinner` |                                                        |
 | `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`                 |
 
@@ -80,6 +81,10 @@ glyph reads as an interactive control. Give it a `background` and it becomes Set
 coloured tile instead: a white glyph on a 29pt continuous-corner square, rendered once per
 symbol-and-colour and cached, with the layout width reserved so untiled rows in the same section
 still line up.
+
+A `Badge` takes its text as children rather than a number, because iOS puts version strings and a
+bare `!` in the same bubble. It sits *inside* the disclosure chevron rather than replacing it, and
+it is not a row kind — a value row with a badge is still a value row.
 
 | Controls     |                                                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |

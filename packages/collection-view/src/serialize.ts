@@ -8,6 +8,7 @@ import {
 import { NODE_TAG } from './internal/tagged'
 import { resolveColor } from './appearance'
 import type {
+  BadgeProps,
   ButtonProps,
   CardProps,
   DatePickerProps,
@@ -282,6 +283,17 @@ function serializeRow(
 
   const value = findByTag(children, 'value')
   if (value != null) row.value = textOf(childrenOf(value))
+
+  const badge = findByTag(children, 'badge')
+  if (badge != null) {
+    const text = textOf(childrenOf(badge))
+    // Deliberately not inferred as a row kind or an accessory: a badge sits *alongside* whatever
+    // the row already has, so a value row with a badge is still a value row.
+    if (text !== '') row.badge = text
+    const { color } = badge.props as unknown as BadgeProps
+    const resolvedBadge = resolveColor(color)
+    if (resolvedBadge != null) row.badgeColor = resolvedBadge
+  }
 
   serializeSwipeActions(children, row, rowId, registry)
   // Passed through so a control can distinguish "this row has no tap target" from "the caller

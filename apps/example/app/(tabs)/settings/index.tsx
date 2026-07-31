@@ -116,6 +116,9 @@ export default function SettingsScreen() {
                     {row.value != null && (
                       <CollectionView.Value>{row.value}</CollectionView.Value>
                     )}
+                    {row.badge != null && (
+                      <CollectionView.Badge>{row.badge}</CollectionView.Badge>
+                    )}
                     <CollectionView.Chevron />
                   </>
                 )}

@@ -178,6 +178,16 @@ export interface RowSpec {
    */
   imageSize?: number
   /**
+   * The red count bubble — Settings' unread badge.
+   *
+   * A string rather than a number because these are not always counts: iOS puts version numbers
+   * and a bare `!` in the same bubble, and a caller who has "1" already formatted should not have
+   * to unformat it.
+   */
+  badge?: string
+  /** The bubble's fill. Defaults to the system red. Normalised to `#RRGGBBAA` before crossing. */
+  badgeColor?: string
+  /**
    * Draws `secondaryLabel` in the tint colour rather than as grey detail text.
    *
    * This is the "Today" / "15:00" under Reminders' Date and Time rows: the tint is what marks the

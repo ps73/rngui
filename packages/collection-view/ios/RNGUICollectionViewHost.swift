@@ -618,34 +618,53 @@ public final class RNGUICollectionViewHost: NSObject {
     // `none` case, so `case .none` against an `AccessoryKind?` would be ambiguous with
     // `Optional.none` — and would silently match the wrong one.
     let accessory: AccessoryKind = row.accessory ?? .none
+
+    // UIKit arranges trailing accessories from the outside in, so whatever goes first sits at the
+    // edge. The disclosure belongs there and the badge belongs inside it, which is where Settings
+    // puts a count — never the other way round.
+    var result: [UICellAccessory] = []
+
     switch accessory {
     case .disclosure:
-      return [.disclosureIndicator()]
+      result.append(.disclosureIndicator())
     case .checkmark:
-      return [.checkmark()]
+      result.append(.checkmark())
     case .checkbox:
-      return [symbolAccessory(
+      result.append(symbolAccessory(
         on: row.on == true,
         onName: "checkmark.circle.fill",
         offName: "circle",
         row: row
-      )]
+      ))
     case .radio:
-      return [symbolAccessory(
+      result.append(symbolAccessory(
         on: row.on == true,
         onName: "largecircle.fill.circle",
         offName: "circle",
         row: row
-      )]
+      ))
     case .spinner:
       let indicator = UIActivityIndicatorView(style: .medium)
       indicator.startAnimating()
-      return [.customView(
+      result.append(.customView(
         configuration: .init(customView: indicator, placement: .trailing(displayed: .always))
-      )]
+      ))
     case .none, .unknown:
-      return []
+      break
     }
+
+    if let text = row.badge, !text.isEmpty {
+      let badge = BadgeView()
+      badge.configure(
+        text: text,
+        color: row.badgeColor.flatMap { UIColor(rnguiHex: $0) } ?? .systemRed
+      )
+      result.append(.customView(
+        configuration: .init(customView: badge, placement: .trailing(displayed: .always))
+      ))
+    }
+
+    return result
   }
 
   private func symbolAccessory(
@@ -735,12 +754,18 @@ public final class RNGUICollectionViewHost: NSObject {
     }
     content.image = image
     content.imageProperties.reservedLayoutSize = .zero
-    content.imageProperties.maximumSize = .zero
     if let size = row.imageSize {
+      let side = CGFloat(size)
       content.imageProperties.preferredSymbolConfiguration =
-        UIImage.SymbolConfiguration(pointSize: CGFloat(size))
+        UIImage.SymbolConfiguration(pointSize: side)
+      // Bounded, and it has to be. An SF Symbol's rendered box is wider than its point size, and
+      // left unbounded `UIListContentConfiguration` gives the image that whole box and takes the
+      // room out of its own leading margin — so a large glyph ends up flush against the card's edge
+      // while every ordinary row beside it stays properly inset.
+      content.imageProperties.maximumSize = CGSize(width: side, height: side)
     } else {
       content.imageProperties.preferredSymbolConfiguration = nil
+      content.imageProperties.maximumSize = .zero
     }
     // Grey by default, not the list tint. A tinted glyph reads as an interactive control, and in a
     // list these are labels for the row — which is why Reminders' calendar and clock are grey while

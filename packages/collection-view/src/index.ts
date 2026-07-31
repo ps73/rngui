@@ -1,5 +1,6 @@
 import { Root } from './CollectionView'
 import {
+  Badge,
   Button,
   Checkbox,
   Checkmark,
@@ -35,6 +36,7 @@ export type {
 } from './CollectionView'
 export type { InheritedAppearance } from './appearance'
 export type {
+  BadgeProps,
   ButtonProps,
   CardProps,
   DatePickerProps,
@@ -112,6 +114,7 @@ export const CollectionView = {
 
   // Accessories
   Icon,
+  Badge,
   Chevron,
   Checkmark,
   Checkbox,

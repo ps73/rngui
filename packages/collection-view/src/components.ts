@@ -160,6 +160,19 @@ export interface IconProps {
  */
 export const Icon = tagged<IconProps>('icon', 'CollectionView.Icon')
 
+export interface BadgeProps extends Children {
+  /** The bubble's fill. Defaults to the system red. */
+  color?: string
+}
+
+/**
+ * The red count bubble, drawn inside the disclosure chevron rather than replacing it.
+ *
+ * Takes its text as children rather than a number, because iOS puts version numbers and a bare `!`
+ * in the same bubble — and a caller who has already formatted "12" should not have to unformat it.
+ */
+export const Badge = tagged<BadgeProps>('badge', 'CollectionView.Badge')
+
 /** A trailing activity indicator, for a row whose value has not arrived yet. */
 export const Spinner = tagged<Record<string, never>>(
   'spinner',

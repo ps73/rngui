@@ -299,6 +299,14 @@ struct RowSpec: Decodable, Equatable {
   /// The glyph's point size, for a bare symbol. Ignored when `imageBackground` is set, where the
   /// tile's own size decides.
   var imageSize: Double?
+  /// The red count bubble — Settings' unread badge.
+  ///
+  /// A string rather than a number because these are not always counts: iOS puts version numbers
+  /// and a bare `!` in the same bubble, and a caller who has "1" already formatted should not have
+  /// to unformat it.
+  var badge: String?
+  /// The bubble's fill. Defaults to the system red. Normalised to `#RRGGBBAA` before crossing.
+  var badgeColor: String?
   /// Draws `secondaryLabel` in the tint colour rather than as grey detail text.
   ///
   /// This is the "Today" / "15:00" under Reminders' Date and Time rows: the tint is what marks the
@@ -358,7 +366,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, imageColor, imageBackground, imageSize, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, imageColor, imageBackground, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -376,6 +384,8 @@ struct RowSpec: Decodable, Equatable {
     imageColor = try container.decodeIfPresent(String.self, forKey: .imageColor)
     imageBackground = try container.decodeIfPresent(String.self, forKey: .imageBackground)
     imageSize = try container.decodeIfPresent(Double.self, forKey: .imageSize)
+    badge = try container.decodeIfPresent(String.self, forKey: .badge)
+    badgeColor = try container.decodeIfPresent(String.self, forKey: .badgeColor)
     secondaryLabelTinted = try container.decodeIfPresent(Bool.self, forKey: .secondaryLabelTinted)
     font = try container.decodeIfPresent(FontSpec.self, forKey: .font)
     selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable)
