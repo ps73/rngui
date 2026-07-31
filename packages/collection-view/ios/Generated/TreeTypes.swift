@@ -273,9 +273,11 @@ struct SwipeActionSpec: Decodable, Equatable {
 struct RowSpec: Decodable, Equatable {
   /// Globally unique — not just unique within its section.
   ///
-  /// These become `UICollectionViewDiffableDataSource` item identifiers, and UIKit drops
-  /// duplicates *silently*, so a repeated id makes rows vanish with no error anywhere. The
-  /// serializer warns about collisions in `__DEV__` for exactly this reason.
+  /// These become `UICollectionViewDiffableDataSource` item identifiers, and a repeated one is
+  /// **fatal**: `appendItems` raises `NSInternalInconsistencyException`, *"Fatal: supplied item
+  /// identifiers are not unique"*. Native deduplicates before building the snapshot so malformed
+  /// input degrades to a missing row rather than a dead app, and the serializer reports the
+  /// collision under `__DEV__` where the offending call site is visible.
   var id: String = ""
   var kind: RowKind = .`default`
   var label: String?
@@ -443,6 +445,9 @@ struct SectionActionSpec: Decodable, Equatable {
 
 struct SectionSpec: Decodable, Equatable {
   /// Unique among sections; becomes a diffable section identifier.
+  ///
+  /// Fatal if repeated, for the same reason `RowSpec.id` is — `appendSections` rejects a duplicate
+  /// exactly as `appendItems` does — and guarded the same way.
   var id: String = ""
   /// Header title. Pins to the top of the viewport in the `plain` appearance.
   var header: String?

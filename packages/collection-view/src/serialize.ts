@@ -615,26 +615,48 @@ export function serialize(
 }
 
 /**
- * Row ids become diffable-data-source item identifiers, which have to be globally unique.
- * UIKit drops duplicates *silently*, so the offending rows simply never appear — with no
- * error, no warning and nothing in the layout to suggest why. Catching it here, where the
- * cause is obvious, saves an afternoon of staring at native code.
+ * Row and section ids become diffable-data-source identifiers, which have to be unique.
+ *
+ * **A duplicate is a crash, not a cosmetic problem.** `NSDiffableDataSourceSnapshot` raises
+ * `NSInternalInconsistencyException` — *"Fatal: supplied item identifiers are not unique"* — from
+ * `appendItems`, and the same from `appendSections`. Native deduplicates before it builds the
+ * snapshot so that a release build degrades to a missing row instead of a dead app, but the
+ * missing row is still wrong and the cause is only visible from here.
+ *
+ * Sections are checked as well as rows, in their own namespace: a section id collides only with
+ * another section id, while a row id has to be unique across the whole tree, because that is the
+ * scope each identifier lives in natively.
  */
 function warnOnDuplicateIds(sections: SectionSpec[]): void {
-  const seen = new Set<string>()
-  const duplicates = new Set<string>()
+  const seenSections = new Set<string>()
+  const duplicateSections = new Set<string>()
+  const seenRows = new Set<string>()
+  const duplicateRows = new Set<string>()
 
   for (const section of sections) {
+    if (seenSections.has(section.id)) duplicateSections.add(section.id)
+    else seenSections.add(section.id)
+
     for (const row of section.rows) {
-      if (seen.has(row.id)) duplicates.add(row.id)
-      else seen.add(row.id)
+      if (seenRows.has(row.id)) duplicateRows.add(row.id)
+      else seenRows.add(row.id)
     }
   }
 
-  if (duplicates.size > 0) {
+  if (duplicateSections.size > 0) {
     console.error(
-      `[@rngui/collection-view] Duplicate row ids: ${[...duplicates].join(', ')}. ` +
-        'Rows sharing an id are dropped by UIKit — give each row a unique `id` or `key`.'
+      `[@rngui/collection-view] Duplicate section ids: ${[...duplicateSections].join(', ')}. ` +
+        'Native drops the repeats to avoid a crash, so those sections and every row in them ' +
+        'will not appear — give each `Section` a unique `id`.'
+    )
+  }
+
+  if (duplicateRows.size > 0) {
+    console.error(
+      `[@rngui/collection-view] Duplicate row ids: ${[...duplicateRows].join(', ')}. ` +
+        'Row ids must be unique across the whole list, not just within a section. Native drops ' +
+        'the repeats to avoid a crash, so those rows will not appear — give each row a unique ' +
+        '`id`.'
     )
   }
 }

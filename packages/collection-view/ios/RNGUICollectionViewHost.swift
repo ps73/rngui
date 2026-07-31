@@ -1751,16 +1751,104 @@ public final class RNGUICollectionViewHost: NSObject {
     emit(range.first, range.last)
   }
 
+  /**
+   * The sections with duplicate identifiers removed, first occurrence winning.
+   *
+   * **A crash guard, not tidying.** `NSDiffableDataSourceSnapshot` raises an
+   * `NSInternalInconsistencyException` — *"Fatal: supplied item identifiers are not unique"* — the
+   * moment `appendItems` is handed an id the snapshot already holds, and `appendSections` behaves
+   * the same way. The serializer warns about row collisions, but only under `__DEV__` and only for
+   * rows, so a release build that produced one id twice used to take the whole app down.
+   *
+   * Rows are deduplicated **globally rather than per section**, because global is the scope
+   * diffable item identifiers live in: the same id in two different sections is the same crash.
+   *
+   * Everything downstream derives from what this returns — `rowsById`, `flatIndexByRowId` and the
+   * snapshot alike — so the flat indices `onVisibleRangeChange` reports keep addressing rows that
+   * exist. Deduplicating at the snapshot alone would leave those three disagreeing about the list.
+   *
+   * The clean case allocates two sets and returns the original array untouched, which is why the
+   * scan is separate from the rebuild: every commit pays for the check, and only a malformed tree
+   * pays for the copy.
+   */
+  private static func deduplicated(_ sections: [SectionSpec]) -> [SectionSpec] {
+    var seenSectionIds = Set<String>()
+    var seenRowIds = Set<String>()
+    var hasDuplicates = false
+
+    scan: for section in sections {
+      if !seenSectionIds.insert(section.id).inserted {
+        hasDuplicates = true
+        break scan
+      }
+      for row in section.rows where !seenRowIds.insert(row.id).inserted {
+        hasDuplicates = true
+        break scan
+      }
+    }
+
+    guard hasDuplicates else { return sections }
+
+    seenSectionIds.removeAll()
+    seenRowIds.removeAll()
+    var droppedSectionIds: [String] = []
+    var droppedRowIds: [String] = []
+    var result: [SectionSpec] = []
+    result.reserveCapacity(sections.count)
+
+    for section in sections {
+      guard seenSectionIds.insert(section.id).inserted else {
+        droppedSectionIds.append(section.id)
+        continue
+      }
+      var deduped = section
+      deduped.rows = section.rows.filter { row in
+        guard seenRowIds.insert(row.id).inserted else {
+          droppedRowIds.append(row.id)
+          return false
+        }
+        return true
+      }
+      result.append(deduped)
+    }
+
+    // Dropping rows silently is the behaviour this component's own comments used to *claim* UIKit
+    // had. It does not, but it is the right behaviour to fall back to — a list missing a row beats
+    // an app that is gone — so the drop is unconditional and only the diagnosis is debug-only.
+    // JavaScript reports the same collision under `__DEV__`, where the offending call site is
+    // visible; this covers a release bundle running against a debug binary, and section ids, which
+    // the serializer does not check.
+    #if DEBUG
+    var complaint = "[@rngui/collection-view] Duplicate identifiers dropped before they could "
+    complaint += "crash UICollectionViewDiffableDataSource."
+    if !droppedSectionIds.isEmpty {
+      complaint += " Sections: \(droppedSectionIds.joined(separator: ", "))."
+    }
+    if !droppedRowIds.isEmpty {
+      complaint += " Rows: \(droppedRowIds.joined(separator: ", "))."
+    }
+    print(complaint)
+    #endif
+
+    return result
+  }
+
   private func apply(tree: Tree) {
-    sections = tree.sections
+    // Deduplicated *before* anything derives from it, so every structure below agrees about which
+    // rows exist. See `deduplicated(_:)`: this is a crash guard, not tidying.
+    let normalized = Self.deduplicated(tree.sections)
+
+    sections = normalized
     listAppearance = tree.listAppearance ?? .insetGrouped
     resolver = AppearanceResolver(light: tree.appearance, dark: tree.darkAppearance)
 
-    let allRows = tree.sections.flatMap(\.rows)
+    let allRows = normalized.flatMap(\.rows)
+    // `uniquingKeysWith` rather than `uniqueKeysWithValues` even though `deduplicated(_:)` has
+    // just guaranteed uniqueness: the latter *traps* on a duplicate, and the entire point of this
+    // path is that malformed input must never take the app down. Keeping the first occurrence
+    // costs nothing and matches the rule the deduplication itself applied.
     rowsById = Dictionary(
       allRows.map { ($0.id, $0) },
-      // Duplicate ids are already reported in JS, where the cause is visible. Keeping the first
-      // occurrence here just avoids a crash on the way to that warning.
       uniquingKeysWith: { first, _ in first }
     )
     flatIndexByRowId = Dictionary(
@@ -1769,8 +1857,8 @@ public final class RNGUICollectionViewHost: NSObject {
     )
 
     var snapshot = NSDiffableDataSourceSnapshot<String, String>()
-    snapshot.appendSections(tree.sections.map(\.id))
-    for section in tree.sections {
+    snapshot.appendSections(normalized.map(\.id))
+    for section in normalized {
       snapshot.appendItems(section.rows.map(\.id), toSection: section.id)
     }
 
