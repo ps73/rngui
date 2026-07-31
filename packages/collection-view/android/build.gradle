@@ -1,0 +1,66 @@
+/**
+ * There is deliberately **no `buildscript` block declaring AGP or Kotlin classpaths.**
+ *
+ * This project is only ever built as a subproject of a consuming app, and every React Native
+ * app template — Expo's included — already puts `com.android.tools.build:gradle` and
+ * `org.jetbrains.kotlin:kotlin-gradle-plugin` on the root project's classpath. Declaring them
+ * again here would pin versions against the app's, which is the usual cause of
+ * "plugin was loaded multiple times in different subprojects". The library is not buildable
+ * standalone, and that is intentional: `npm run verify` covers the TypeScript and Swift
+ * contracts, and the Kotlin is compiled by the example app.
+ */
+apply plugin: "com.android.library"
+apply plugin: "org.jetbrains.kotlin.android"
+
+/**
+ * Runs codegen for the `codegenConfig` block in package.json, and adds its output —
+ * `build/generated/source/codegen/java`, holding `RNGUICollectionViewManagerInterface` and
+ * `RNGUICollectionViewManagerDelegate` — to this project's main source set. Nothing below adds
+ * that directory by hand; doing so would register it twice and AGP fails on the duplicate.
+ */
+apply plugin: "com.facebook.react"
+
+/** Falls back to this library's own floor when the app does not publish a value. */
+def safeExtGet(prop, fallback) {
+  return rootProject.ext.has(prop) ? rootProject.ext.get(prop) : fallback
+}
+
+android {
+  namespace "com.rngui.collectionview"
+
+  compileSdkVersion safeExtGet("compileSdkVersion", 36)
+
+  defaultConfig {
+    minSdkVersion safeExtGet("minSdkVersion", 24)
+  }
+
+  // Both halves are required and have to agree. AGP compiles Java at the app's target, while
+  // Kotlin 2.x still defaults `jvmTarget` to 1.8 — leaving the second block out fails the build
+  // with "Inconsistent JVM-target compatibility" rather than anything pointing at this file.
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  lint {
+    abortOnError false
+  }
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+  compilerOptions {
+    jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+  }
+}
+
+repositories {
+  google()
+  mavenCentral()
+}
+
+dependencies {
+  // `react-native` rather than `react-android`: React Native's Gradle plugin substitutes the
+  // former for the latter at the app's exact version, so an unversioned `+` here can never drift
+  // from what the app resolves.
+  implementation "com.facebook.react:react-native:+"
+}

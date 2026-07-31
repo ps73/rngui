@@ -1,0 +1,10 @@
+# Prettier resolves its ignore file relative to the **working directory**, not the repository root,
+# so the root `.prettierignore` does nothing when Prettier is invoked from inside this app. That is
+# not hypothetical: running `npx prettier --write .` from here reformatted 70 files under `ios/` —
+# CocoaPods' generated podspec JSON, Swift module ABI descriptors, and dSYM relocation YAML inside
+# vendored xcframeworks. All regenerable, and all of it noise nobody should have to notice.
+#
+# This file exists so the mistake is impossible rather than merely discouraged.
+ios/
+android/
+.expo/

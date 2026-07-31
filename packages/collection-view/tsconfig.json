@@ -1,0 +1,22 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    /*
+     * The package root, not `src` — and it is required, not cosmetic.
+     *
+     * `react-native-builder-bob` passes `--outDir` to `tsc` and deliberately never passes
+     * `--rootDir`, leaving the output layout to tsc's inference. TypeScript 6 stopped inferring it
+     * and now fails with TS5011, so `bob build` cannot produce declarations at all without this —
+     * which is to say the package was unpublishable and only a real build would have shown it.
+     *
+     * `.` rather than `src` because the emitted tree keeps the `src/` prefix: bob's own convention,
+     * and what `exports.types` points at (`./lib/typescript/src/index.d.ts`). Setting `src` here
+     * would flatten it and break every one of those paths.
+     *
+     * Only `rootDir` is safe to set: bob treats `outDir` and `declarationDir` in a tsconfig as
+     * conflicts with its own and refuses to build.
+     */
+    "rootDir": "."
+  },
+  "include": ["src/**/*"]
+}

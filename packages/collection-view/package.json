@@ -1,0 +1,127 @@
+{
+  "name": "@rngui/collection-view",
+  "version": "0.0.0",
+  "description": "A real iOS UICollectionView for React Native, with a Radix-style compound API.",
+  "license": "AGPL-3.0-only",
+  "author": "Phil <phil.schaffarzyk@gmail.com>",
+  "homepage": "https://github.com/ps73/rngui/tree/main/packages/collection-view",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ps73/rngui.git",
+    "directory": "packages/collection-view"
+  },
+  "keywords": [
+    "react-native",
+    "ios",
+    "uicollectionview",
+    "list",
+    "fabric"
+  ],
+  "main": "./lib/commonjs/index.js",
+  "module": "./lib/module/index.js",
+  "types": "./lib/typescript/commonjs/src/index.d.ts",
+  "react-native": "src/index",
+  "source": "src/index",
+  "exports": {
+    ".": {
+      "react-native": "./src/index.ts",
+      "import": {
+        "types": "./lib/typescript/module/src/index.d.ts",
+        "default": "./lib/module/index.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/index.d.ts",
+        "default": "./lib/commonjs/index.js"
+      }
+    },
+    "./bottom-sheet": {
+      "react-native": "./src/bottom-sheet.tsx",
+      "import": {
+        "types": "./lib/typescript/module/src/bottom-sheet.d.ts",
+        "default": "./lib/module/bottom-sheet.js"
+      },
+      "require": {
+        "types": "./lib/typescript/commonjs/src/bottom-sheet.d.ts",
+        "default": "./lib/commonjs/bottom-sheet.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "lib",
+    "ios",
+    "android/src",
+    "android/build.gradle",
+    "*.podspec",
+    "react-native.config.js",
+    "!**/__tests__",
+    "!ios/Tests",
+    "!**/.*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bob build",
+    "gen:swift-types": "node scripts/gen-swift-types.mjs",
+    "test": "swift test",
+    "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests"
+  },
+  "codegenConfig": {
+    "name": "RNGUICollectionView",
+    "type": "all",
+    "jsSrcsDir": "./src/specs",
+    "android": {
+      "javaPackageName": "com.rngui.collectionview"
+    },
+    "ios": {
+      "componentProvider": {
+        "RNGUICollectionView": "RNGUICollectionViewComponentView"
+      }
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      [
+        "commonjs",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "module",
+        {
+          "esm": true
+        }
+      ],
+      [
+        "typescript",
+        {
+          "project": "tsconfig.json"
+        }
+      ]
+    ]
+  },
+  "peerDependencies": {
+    "@gorhom/bottom-sheet": ">=5",
+    "react": "*",
+    "react-native": "*",
+    "react-native-gesture-handler": "*",
+    "react-native-reanimated": "*"
+  },
+  "peerDependenciesMeta": {
+    "@gorhom/bottom-sheet": {
+      "optional": true
+    },
+    "react-native-gesture-handler": {
+      "optional": true
+    },
+    "react-native-reanimated": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
