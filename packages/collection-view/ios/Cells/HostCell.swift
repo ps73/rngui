@@ -64,9 +64,23 @@ final class HostCell: UICollectionViewCell {
     hosted = view
   }
 
+  /// The view this cell is currently displaying, so the host can find the one cell that owns it.
+  var hostedView: UIView? { hosted }
+
   func detach() {
     guard let view = hosted else { return }
     hosted = nil
+
+    /**
+     * Only if this cell still owns it, and that guard is load-bearing.
+     *
+     * During a reload UIKit configures the *replacement* cell before recycling the outgoing one, so
+     * by the time `prepareForReuse` runs here the view has already been claimed by the cell that
+     * replaced this one. Hiding it then blanks a row that is on screen and correct — which is
+     * exactly what a theme change did: `reloadSections` re-created every cell, and every hosted row
+     * whose identity survived went empty while the one that had just been *inserted* was fine.
+     */
+    guard view.superview === contentView else { return }
 
     view.isHidden = true
     view.removeFromSuperview()

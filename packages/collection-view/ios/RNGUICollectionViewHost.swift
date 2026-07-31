@@ -1889,8 +1889,11 @@ public final class RNGUICollectionViewHost: NSObject {
 
   /// Called before React unmounts a child, so whichever cell holds it lets go first.
   @objc public func releaseHostedView(_ view: UIView) {
+    // Only the cell actually displaying this one. Detaching every visible host cell — which is what
+    // this did — meant unmounting a single hosted child blanked all its neighbours until something
+    // reconfigured them.
     for cell in collectionView.visibleCells {
-      guard let host = cell as? HostCell else { continue }
+      guard let host = cell as? HostCell, host.hostedView === view else { continue }
       host.detach()
     }
     if view.superview === container {
