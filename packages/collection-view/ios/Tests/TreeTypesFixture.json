@@ -3,6 +3,11 @@
     {
       "id": "Tree.sections[0].id",
       "header": "Tree.sections[0].header",
+      "action": {
+        "title": "Tree.sections[0].action.title",
+        "systemImage": "Tree.sections[0].action.systemImage",
+        "disabled": true
+      },
       "footer": "Tree.sections[0].footer",
       "layout": "chips",
       "indexTitle": "Tree.sections[0].indexTitle",

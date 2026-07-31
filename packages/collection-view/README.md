@@ -56,12 +56,12 @@ second source of truth to disagree with the children.
 
 ## Components
 
-| Structure |                                                          |
-| --------- | -------------------------------------------------------- |
-| `Root`    | The list itself. Props below.                            |
-| `Section` | `id` · `header` · `footer` · `indexTitle` · `layout`     |
-| `Row`     | `id` · `onPress` · `height` · `font`                     |
-| `Host`    | `id` · `height` · `onPress` — hosts a real React subtree |
+| Structure |                                                                 |
+| --------- | --------------------------------------------------------------- |
+| `Root`    | The list itself. Props below.                                   |
+| `Section` | `id` · `header` · `footer` · `indexTitle` · `layout` · `action` |
+| `Row`     | `id` · `onPress` · `height` · `font`                            |
+| `Host`    | `id` · `height` · `onPress` — hosts a real React subtree        |
 
 | Row slots     |                                                                    |
 | ------------- | ------------------------------------------------------------------ |
@@ -101,6 +101,12 @@ eating the row's leading margin.
 A `Badge` takes its text as children rather than a number, because iOS puts version strings and a
 bare `!` in the same bubble. It sits _inside_ the disclosure chevron rather than replacing it, and
 it is not a row kind — a value row with a badge is still a value row.
+
+A `Section`'s `action` is the "Show All" beside a header title —
+`{ title?, systemImage?, disabled?, onPress? }`. It becomes a real `UIButton` in the header's own
+trailing accessory slot, so it lines up with the disclosure chevrons below it and keeps its own
+pressed and disabled states. It needs a `header` to attach to: UIKit builds no header view for a
+section that asked for none, and `__DEV__` warns rather than dropping the action silently.
 
 Enums: `keyboardType` is `default | numeric | decimal | email | phone | url | asciiCapable`,
 `autoCapitalize` is `none | sentences | words | characters`, `returnKeyType` is

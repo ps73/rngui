@@ -332,6 +332,8 @@ export interface NativeProps extends ViewProps {
   onSwipeAction?: DirectEventHandler<
     Readonly<{ rowId: string; actionId: string }>
   >
+  /** The one event addressed by *section* rather than by row — a header's trailing button. */
+  onSectionAction?: DirectEventHandler<Readonly<{ sectionId: string }>>
 }
 
 /**

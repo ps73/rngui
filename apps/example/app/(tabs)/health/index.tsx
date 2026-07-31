@@ -29,6 +29,9 @@ const TEAL = '#0FA3A3'
 
 export default function HealthScreen() {
   const [range, setRange] = useState('week')
+  // Drives the header button's own title, which is the point: it proves the tap made the round trip
+  // out to native and back rather than the button merely being drawn.
+  const [showAll, setShowAll] = useState(false)
 
   return (
     <CollectionView.Root
@@ -70,6 +73,13 @@ export default function HealthScreen() {
       <CollectionView.Section
         id="highlights"
         header="Highlights"
+        // The "Show All" beside a section title, which Health puts on every summary group. A
+        // `UIButton` in the header's own trailing accessory slot, so it lines up with the
+        // disclosure chevrons in the rows below it rather than being placed by hand.
+        action={{
+          title: showAll ? 'Show Less' : 'Show All',
+          onPress: () => setShowAll((current) => !current),
+        }}
         footer="Every card here is a recycled cell described by a RowSpec — not a React subtree. That is the difference between eight cards and eight live component trees."
       >
         <CollectionView.Row id="state-of-mind">
@@ -90,15 +100,17 @@ export default function HealthScreen() {
             Mindful Minutes
           </CollectionView.Card>
         </CollectionView.Row>
-        <CollectionView.Row id="daylight">
-          <CollectionView.Card
-            systemImage="sun.horizon"
-            value="1 h 18 min"
-            caption="Daily average time in daylight."
-          >
-            Time in Daylight
-          </CollectionView.Card>
-        </CollectionView.Row>
+        {showAll && (
+          <CollectionView.Row id="daylight">
+            <CollectionView.Card
+              systemImage="sun.horizon"
+              value="1 h 18 min"
+              caption="Daily average time in daylight."
+            >
+              Time in Daylight
+            </CollectionView.Card>
+          </CollectionView.Row>
+        )}
       </CollectionView.Section>
 
       <CollectionView.Section
@@ -111,7 +123,17 @@ export default function HealthScreen() {
         </CollectionView.Host>
       </CollectionView.Section>
 
-      <CollectionView.Section id="more" header="More">
+      <CollectionView.Section
+        id="more"
+        header="More"
+        // The symbol form of the same thing, and disabled — so the screen proves the button keeps
+        // its own dimmed state rather than the list having to fake one.
+        action={{
+          systemImage: 'ellipsis.circle',
+          disabled: true,
+          onPress: () => {},
+        }}
+      >
         <CollectionView.Row id="symptoms" onPress={() => {}}>
           <CollectionView.Icon systemImage="list.bullet.clipboard" />
           <CollectionView.Label>Symptoms</CollectionView.Label>

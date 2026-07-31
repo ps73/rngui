@@ -195,6 +195,11 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
       });
     };
 
+    _host.onSectionAction = ^(NSString *sectionId) {
+      RNGUI_EMITTER(emitter)
+      emitter->onSectionAction({.sectionId = RCTStringFromNSString(sectionId)});
+    };
+
     /**
      * The five scroll events.
      *

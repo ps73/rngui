@@ -275,11 +275,32 @@ export interface RowSpec {
   leadingActions?: SwipeActionSpec[]
 }
 
+/**
+ * The tappable control on the trailing edge of a section header — "See All", "Edit".
+ *
+ * No callback here, for the same reason no other spec has one: this is JSON. The section's `id` is
+ * what native reports back, and `Root` dispatches from a registry keyed by it.
+ */
+export interface SectionActionSpec {
+  /** The button's title. Drawn in the tint colour, as a header button is. */
+  title?: string
+  /** SF Symbol name. Shown instead of the title when both are set, as UIKit prefers elsewhere. */
+  systemImage?: string
+  disabled?: boolean
+}
+
 export interface SectionSpec {
   /** Unique among sections; becomes a diffable section identifier. */
   id: string
   /** Header title. Pins to the top of the viewport in the `plain` appearance. */
   header?: string
+  /**
+   * A control on the header's trailing edge.
+   *
+   * Only meaningful with a `header` — UIKit gives a section no header view at all unless one is
+   * asked for, and a button floating where no header exists has nowhere to be.
+   */
+  action?: SectionActionSpec
   /** The grey explanatory text drawn under a group. */
   footer?: string
   /** `list` unless set. `chips` makes the section a horizontally scrolling strip of pills. */

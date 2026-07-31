@@ -489,6 +489,9 @@ export function Root({
         const { rowId, actionId } = event.nativeEvent
         registryRef.current.swipeAction.get(rowId)?.[actionId]?.()
       },
+      onSectionAction: (event: NativeSyntheticEvent<{ sectionId: string }>) => {
+        registryRef.current.sectionAction.get(event.nativeEvent.sectionId)?.()
+      },
     }),
     []
   )

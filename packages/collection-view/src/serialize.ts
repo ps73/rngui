@@ -26,6 +26,7 @@ import type {
   AccessoryKind,
   RowKind,
   RowSpec,
+  SectionActionSpec,
   SectionSpec,
   SwipeActionSpec,
 } from './tree'
@@ -76,6 +77,8 @@ export interface HandlerRegistry {
    * configuration is built per row and each button inside it carries its own callback.
    */
   swipeAction: Map<string, Record<string, () => void>>
+  /** Keyed by *section* id — the one handler that does not belong to a row. */
+  sectionAction: Map<string, () => void>
 }
 
 export function createRegistry(): HandlerRegistry {
@@ -87,6 +90,7 @@ export function createRegistry(): HandlerRegistry {
     dateChange: new Map(),
     menuSelect: new Map(),
     swipeAction: new Map(),
+    sectionAction: new Map(),
   }
 }
 
@@ -572,6 +576,24 @@ export function serialize(
       if (props.footer != null) section.footer = props.footer
       if (props.indexTitle != null) section.indexTitle = props.indexTitle
       if (props.layout != null) section.layout = props.layout
+      if (props.action != null) {
+        const { title, systemImage, disabled, onPress } = props.action
+        if (__DEV__ && props.header == null) {
+          console.warn(
+            `[@rngui/collection-view] Section "${sectionId}" has an \`action\` but no \`header\`. ` +
+              'UIKit builds no header view for a section that asked for none, so the action has ' +
+              'nowhere to draw and is ignored.'
+          )
+        }
+        const spec: SectionActionSpec = {}
+        if (title != null) spec.title = title
+        if (systemImage != null) spec.systemImage = systemImage
+        if (disabled === true) spec.disabled = true
+        section.action = spec
+        if (onPress != null && disabled !== true) {
+          registry.sectionAction.set(sectionId, onPress)
+        }
+      }
       // A chip section's rows *are* chips, whatever they contain. Overriding the inferred kind here
       // rather than asking the caller to say it twice keeps the section as the single source of
       // truth for its own layout.

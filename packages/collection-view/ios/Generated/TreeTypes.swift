@@ -415,11 +415,42 @@ struct RowSpec: Decodable, Equatable {
   }
 }
 
+/// The tappable control on the trailing edge of a section header — "See All", "Edit".
+///
+/// No callback here, for the same reason no other spec has one: this is JSON. The section's `id` is
+/// what native reports back, and `Root` dispatches from a registry keyed by it.
+struct SectionActionSpec: Decodable, Equatable {
+  /// The button's title. Drawn in the tint colour, as a header button is.
+  var title: String?
+  /// SF Symbol name. Shown instead of the title when both are set, as UIKit prefers elsewhere.
+  var systemImage: String?
+  var disabled: Bool?
+
+  private enum CodingKeys: String, CodingKey {
+    case title, systemImage, disabled
+  }
+
+  /// All defaults. Lets native render an empty list before any tree has arrived.
+  init() {}
+
+  init(from decoder: any Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    title = try container.decodeIfPresent(String.self, forKey: .title)
+    systemImage = try container.decodeIfPresent(String.self, forKey: .systemImage)
+    disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
+  }
+}
+
 struct SectionSpec: Decodable, Equatable {
   /// Unique among sections; becomes a diffable section identifier.
   var id: String = ""
   /// Header title. Pins to the top of the viewport in the `plain` appearance.
   var header: String?
+  /// A control on the header's trailing edge.
+  ///
+  /// Only meaningful with a `header` — UIKit gives a section no header view at all unless one is
+  /// asked for, and a button floating where no header exists has nowhere to be.
+  var action: SectionActionSpec?
   /// The grey explanatory text drawn under a group.
   var footer: String?
   /// `list` unless set. `chips` makes the section a horizontally scrolling strip of pills.
@@ -434,7 +465,7 @@ struct SectionSpec: Decodable, Equatable {
   var rows: [RowSpec] = []
 
   private enum CodingKeys: String, CodingKey {
-    case id, header, footer, layout, indexTitle, rows
+    case id, header, action, footer, layout, indexTitle, rows
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -444,6 +475,7 @@ struct SectionSpec: Decodable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
     header = try container.decodeIfPresent(String.self, forKey: .header)
+    action = try container.decodeIfPresent(SectionActionSpec.self, forKey: .action)
     footer = try container.decodeIfPresent(String.self, forKey: .footer)
     layout = try container.decodeIfPresent(SectionLayout.self, forKey: .layout)
     indexTitle = try container.decodeIfPresent(String.self, forKey: .indexTitle)

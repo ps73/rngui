@@ -39,6 +39,25 @@ export interface SectionProps extends Children {
    * one stray list row in it is never what anyone meant.
    */
   layout?: SectionLayout
+  /**
+   * A control on the trailing edge of the header — the "See All" beside a title.
+   *
+   * A prop rather than a slot component, unlike a row's accessories, because `header` and `footer`
+   * are already props: the header is a string this component renders, not a subtree the caller
+   * assembles, and putting one of its two halves in the children would split it in two places.
+   *
+   * Needs a `header` to attach to. UIKit builds no header view at all for a section that asked for
+   * none, so a button with no title beside it has nowhere to go, and `__DEV__` warns rather than
+   * dropping it silently.
+   */
+  action?: {
+    /** Drawn in the tint colour, as a header button is. */
+    title?: string
+    /** SF Symbol name. Shown instead of the title when both are set. */
+    systemImage?: string
+    disabled?: boolean
+    onPress?: () => void
+  }
 }
 export const Section = tagged<SectionProps>('section', 'CollectionView.Section')
 

@@ -58,6 +58,8 @@ public final class RNGUICollectionViewHost: NSObject {
   @objc public var onDateChange: ((String, Double) -> Void)?
   @objc public var onMenuSelect: ((String, String) -> Void)?
   @objc public var onSwipeAction: ((String, String) -> Void)?
+  /// Carries a *section* id, unlike every other block here. A header button belongs to no row.
+  @objc public var onSectionAction: ((String) -> Void)?
 
   /**
    * `UIScrollViewDelegate`, forwarded as five blocks rather than one with a kind discriminator.
@@ -1110,78 +1112,157 @@ public final class RNGUICollectionViewHost: NSObject {
     }
   }
 
+  /**
+   * The trailing button on a section header — "See All", "Edit".
+   *
+   * A `UICellAccessory` on the header's own list cell rather than a hand-laid-out subview, which is
+   * the whole reason headers are registered as `UICollectionViewListCell`s: the accessory system
+   * already knows where the trailing edge is, how far to inset from it, and how to make room in the
+   * content next to it.
+   *
+   * `UIButton.Configuration.plain()` rather than a bare title, so the button keeps its own pressed
+   * and disabled states — a header button that does not dim under a finger is the sort of thing
+   * nobody names but everybody notices.
+   */
+  private func headerAccessories(for section: SectionSpec) -> [UICellAccessory] {
+    guard let action = section.action, section.header != nil else { return [] }
+
+    var configuration = UIButton.Configuration.plain()
+    configuration.title = action.title
+    if let name = action.systemImage {
+      configuration.image = UIImage(systemName: name)
+    }
+    // No padding: the accessory placement already supplies the trailing inset, and the button's own
+    // would push the label away from the edge every other trailing accessory sits on.
+    configuration.contentInsets = .zero
+    configuration.baseForegroundColor = resolver.optionalColor(\.tintColor) ?? .tintColor
+
+    let button = UIButton(configuration: configuration)
+    button.isEnabled = action.disabled != true
+
+    let sectionId = section.id
+    button.addAction(
+      UIAction { [weak self] _ in self?.onSectionAction?(sectionId) },
+      for: .primaryActionTriggered
+    )
+
+    return [.customView(
+      configuration: .init(customView: button, placement: .trailing(displayed: .always))
+    )]
+  }
+
   private func makeBoundaryRegistration(
     kind: String
   ) -> UICollectionView.SupplementaryRegistration<UICollectionViewListCell> {
     UICollectionView.SupplementaryRegistration(elementKind: kind) {
       [weak self] view, _, indexPath in
-      guard let self, let section = self.sections[safe: indexPath.section] else { return }
-      let isHeader = kind == UICollectionView.elementKindSectionHeader
-      let traits = view.traitCollection
-      let isPlain = self.listAppearance == .plain
-
-      // The plain presets are not merely the grouped ones restyled: a plain header is
-      // left-aligned, title-cased and heavier, which is what an alphabet index needs, whereas
-      // the grouped header is the small uppercase label a Settings group uses.
-      var content: UIListContentConfiguration
-      switch (isHeader, isPlain) {
-      case (true, true): content = .plainHeader()
-      case (true, false): content = .groupedHeader()
-      case (false, true): content = .plainFooter()
-      case (false, false): content = .groupedFooter()
-      }
-      content.text = isHeader ? section.header : section.footer
-
-      let colorKeyPath: KeyPath<Appearance, String?> =
-        isHeader ? \.headerTextColor : \.footerTextColor
-      if let color = self.resolver.optionalColor(colorKeyPath) {
-        content.textProperties.color = color
-      }
-
-      // Falls back to the root `font` when no header- or footer-specific spec is set, which is
-      // what makes "use my typeface everywhere" a one-line change.
-      let fontSpec =
-        self.resolver.value({ isHeader ? $0.headerFont : $0.footerFont }, for: traits)
-        ?? self.resolver.value({ $0.font }, for: traits)
-      content.textProperties.font = FontResolver.resolve(
-        fontSpec,
-        fallback: content.textProperties.font
-      )
-
-      view.contentConfiguration = content
-
-      // A pinned header slides over the rows beneath it, so it has to be opaque or the two sets
-      // of text overlap while scrolling. Assigned on every pass, never conditionally — this is a
-      // reused view, and a header that was once opaque would otherwise stay opaque after the list
-      // switched to a grouped appearance.
-      var background: UIBackgroundConfiguration = .listPlainHeaderFooter()
-      if isHeader, isPlain {
-        // A pinned header slides over the rows beneath it, so by default it must be opaque or the
-        // two sets of text overlap. `blurred` is the deliberate exception — Contacts lets its rows
-        // stay visible *through* the header, which only works because it is a material rather than
-        // a translucent colour: `UIBackgroundConfiguration.visualEffect` is what UIKit provides for
-        // exactly this, and it keeps the vibrancy and the automatic dark-mode behaviour.
-        switch self.resolver.value({ $0.headerBackgroundStyle }, for: traits) ?? .opaque {
-        case .blurred:
-          background.backgroundColor = .clear
-          background.visualEffect = UIBlurEffect(style: .systemChromeMaterial)
-        case .soft:
-          background.backgroundColor = .clear
-          // Reused when this header already has one. The registration handler runs on dequeue and
-          // on every reconfigure, and a blur view allocated per pass would be a new one on every
-          // tree update for every visible section.
-          background.customView =
-            (view.backgroundConfiguration?.customView as? SoftHeaderBackgroundView)
-            ?? SoftHeaderBackgroundView()
-        case .transparent:
-          background.backgroundColor = .clear
-        case .opaque, .unknown:
-          background.backgroundColor =
-            self.resolver.optionalColor(\.background) ?? .secondarySystemBackground
-        }
-      }
-      view.backgroundConfiguration = background
+      self?.configureBoundary(view, kind: kind, sectionIndex: indexPath.section)
     }
+  }
+
+  /**
+   * Refreshes the headers and footers already on screen.
+   *
+   * **Nothing else does.** `reconfigureItems` is items only, and a diffable snapshot carries section
+   * *identifiers* rather than section content — so a section whose header text, footer text or
+   * action changed while its id stayed the same produces a snapshot UIKit sees as unchanged, and
+   * the supplementary view keeps whatever it was last given. That is how a "Show All" button could
+   * toggle its rows correctly and never change its own title.
+   *
+   * Only the visible ones need it: anything off screen is dequeued fresh on its way in and picks up
+   * the current spec then. There are at most a handful visible, so this is cheap enough to run on
+   * every tree update rather than trying to work out whether it was needed.
+   */
+  private func refreshVisibleBoundaries() {
+    for kind in [
+      UICollectionView.elementKindSectionHeader,
+      UICollectionView.elementKindSectionFooter,
+    ] {
+      for indexPath in collectionView.indexPathsForVisibleSupplementaryElements(ofKind: kind) {
+        guard
+          let view = collectionView.supplementaryView(forElementKind: kind, at: indexPath)
+            as? UICollectionViewListCell
+        else { continue }
+        configureBoundary(view, kind: kind, sectionIndex: indexPath.section)
+      }
+    }
+  }
+
+  private func configureBoundary(
+    _ view: UICollectionViewListCell,
+    kind: String,
+    sectionIndex: Int
+  ) {
+    guard let section = sections[safe: sectionIndex] else { return }
+    let isHeader = kind == UICollectionView.elementKindSectionHeader
+    let traits = view.traitCollection
+    let isPlain = listAppearance == .plain
+
+    // The plain presets are not merely the grouped ones restyled: a plain header is
+    // left-aligned, title-cased and heavier, which is what an alphabet index needs, whereas
+    // the grouped header is the small uppercase label a Settings group uses.
+    var content: UIListContentConfiguration
+    switch (isHeader, isPlain) {
+    case (true, true): content = .plainHeader()
+    case (true, false): content = .groupedHeader()
+    case (false, true): content = .plainFooter()
+    case (false, false): content = .groupedFooter()
+    }
+    content.text = isHeader ? section.header : section.footer
+
+    let colorKeyPath: KeyPath<Appearance, String?> =
+      isHeader ? \.headerTextColor : \.footerTextColor
+    if let color = self.resolver.optionalColor(colorKeyPath) {
+      content.textProperties.color = color
+    }
+
+    // Falls back to the root `font` when no header- or footer-specific spec is set, which is
+    // what makes "use my typeface everywhere" a one-line change.
+    let fontSpec =
+      self.resolver.value({ isHeader ? $0.headerFont : $0.footerFont }, for: traits)
+      ?? self.resolver.value({ $0.font }, for: traits)
+    content.textProperties.font = FontResolver.resolve(
+      fontSpec,
+      fallback: content.textProperties.font
+    )
+
+    view.contentConfiguration = content
+
+    // Assigned unconditionally, including the empty case: this is a reused view, and a header
+    // that once had a button would otherwise keep it after scrolling into a section with none.
+    view.accessories = isHeader ? self.headerAccessories(for: section) : []
+
+    // A pinned header slides over the rows beneath it, so it has to be opaque or the two sets
+    // of text overlap while scrolling. Assigned on every pass, never conditionally — this is a
+    // reused view, and a header that was once opaque would otherwise stay opaque after the list
+    // switched to a grouped appearance.
+    var background: UIBackgroundConfiguration = .listPlainHeaderFooter()
+    if isHeader, isPlain {
+      // A pinned header slides over the rows beneath it, so by default it must be opaque or the
+      // two sets of text overlap. `blurred` is the deliberate exception — Contacts lets its rows
+      // stay visible *through* the header, which only works because it is a material rather than
+      // a translucent colour: `UIBackgroundConfiguration.visualEffect` is what UIKit provides for
+      // exactly this, and it keeps the vibrancy and the automatic dark-mode behaviour.
+      switch self.resolver.value({ $0.headerBackgroundStyle }, for: traits) ?? .opaque {
+      case .blurred:
+        background.backgroundColor = .clear
+        background.visualEffect = UIBlurEffect(style: .systemChromeMaterial)
+      case .soft:
+        background.backgroundColor = .clear
+        // Reused when this header already has one. The registration handler runs on dequeue and
+        // on every reconfigure, and a blur view allocated per pass would be a new one on every
+        // tree update for every visible section.
+        background.customView =
+          (view.backgroundConfiguration?.customView as? SoftHeaderBackgroundView)
+          ?? SoftHeaderBackgroundView()
+      case .transparent:
+        background.backgroundColor = .clear
+      case .opaque, .unknown:
+        background.backgroundColor =
+          self.resolver.optionalColor(\.background) ?? .secondarySystemBackground
+      }
+    }
+    view.backgroundConfiguration = background
   }
 
   // MARK: - Data
@@ -1759,6 +1840,12 @@ public final class RNGUICollectionViewHost: NSObject {
      * around for no reason.
      */
     dataSource.apply(snapshot, animatingDifferences: structureChanged)
+
+    // After the apply, so `sections` and the data source agree about what is where. Nothing in a
+    // diffable snapshot represents a section's *content*, so this is the only thing that gets new
+    // header text, footer text or a changed action onto a header already on screen.
+    refreshVisibleBoundaries()
+
     // The row at a given index almost certainly changed even if the visible *cells* did not, so
     // the range has to be recomputed rather than assumed stable.
     lastEmittedRange = nil
