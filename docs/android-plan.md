@@ -170,6 +170,85 @@ fails to resolve. If it resolves, kotlinx.serialization wins on every axis and M
 the serialization question is answered by a real build failure or a real success, and the two
 decisions are written down with their numbers.
 
+### M1 results
+
+Measured 2026-07-31. The spike is
+[`RowBackendSpike.kt`](../packages/collection-view/android/src/androidTest/java/com/rngui/collectionview/spike/RowBackendSpike.kt);
+re-run it with `apps/example/android/gradlew :rngui_collection-view:connectedDebugAndroidTest`.
+
+**Decision 2 — serialization: settled, as predicted.** Adding
+`apply plugin: "org.jetbrains.kotlin.plugin.serialization"` to the library subproject of a
+prebuilt Expo app fails at configuration time:
+
+```
+> Plugin with id 'org.jetbrains.kotlin.plugin.serialization' not found.
+```
+
+Generated `org.json` decoders it is, and M2 ships them.
+
+**A finding the plan did not anticipate: Compose has the same problem.** Since Kotlin 2.0 the
+Compose compiler is a Gradle plugin too, and `org.jetbrains.kotlin.plugin.compose` fails
+identically. It is _recoverable_ where serialization was not — a `buildscript` block in the
+library's own `build.gradle`, with the version read off `rootProject.ext.kotlinVersion` so it
+tracks the app's Kotlin rather than pinning against it, resolves and compiles. But it means
+**any** use of Compose costs the library the one thing `android/build.gradle` was written to
+avoid, and the cost is paid at the first `@Composable` rather than at the hundredth.
+
+**Decision 1 — row backend: the emulator cannot settle it, and says so.**
+
+|         | create   | first bind | rebind    |
+| ------- | -------- | ---------- | --------- |
+| Views   | 0.292 ms | 0.054 ms   | 0.055 ms  |
+| Compose | 0.039 ms | 2.207 ms   | 0.021 ms† |
+
+† Not a real number. Writing a `mutableStateOf` schedules a recomposition that dispatches on the
+next frame, so a `measure()` on the same stack still sees the old composition. The spike says this
+rather than reporting it as a cost — an earlier version of it did report exactly that, and was
+confidently wrong by two orders of magnitude.
+
+Frame times, 2,000 rows, 400 frames of fixed `scrollBy`:
+
+|         | p50      | p90      | p99      | janky frames |
+| ------- | -------- | -------- | -------- | ------------ |
+| Views   | 17.50 ms | 18.34 ms | 18.88 ms | 290 / 400    |
+| Compose | 24.68 ms | 29.28 ms | 34.24 ms | 388 / 400    |
+
+**The Views baseline misses 60fps drawing two `TextView`s per row.** On a software-rendered
+emulator there is no 16 ms budget left in which to measure a 2 ms cost, and the frame comparison
+additionally penalises Compose's draw path in a way a real GPU would not. The one number that does
+transfer is first composition: **2.15 ms above Views**, which is over the plan's threshold — but it
+is paid once per _holder_, not once per row, so a pool of ~7 per view type pays it ~7 times. That
+is a hitch when a list first scrolls, not a per-row tax, and it is not by itself grounds for the
+fallback.
+
+**What M3 does with that.** It builds `default` / `value` / `subtitle` as hand-built Views — the
+plan's own documented fallback — for three reasons, only one of which is performance:
+
+1. The measurement is inconclusive on available hardware, and the plan's rule is that a verdict
+   needs a reproduction. Shipping the more expensive option on an unresolved measurement is the
+   wrong way round.
+2. Both branches of Decision 1 keep Compose for the control-bearing kinds (`switch`, `datePicker`,
+   `menu`, `chip`), so this defers nothing that M7 will not need anyway.
+3. The build-system coupling above is real, permanent and paid up front. Three row kinds that a
+   `LinearLayout` renders in 0.055 ms are not what should buy it.
+
+This is a decision to revisit, not a closed one. Re-run the spike on the M12 device matrix; if
+Compose holds frame budget on a mid-tier phone, moving the three stock kinds over is a contained
+change, because M3 puts every row kind behind one `RowViewHolder` seam.
+
+**`minSdk` stays at 24.** Raising it to 26 buys `Paint.setFontVariationSettings` and costs every
+consumer below it, against a React Native floor of 24. M6 falls back to the nearest static weight
+below 26, which is a visible-but-correct degradation rather than a broken one — and the ink-coverage
+instrument M6 specifies will say which path a device took.
+
+**Unit tests run**, through the example app's Gradle exactly as the plan proposed:
+
+```
+apps/example/android/gradlew -p apps/example/android :rngui_collection-view:testDebugUnitTest
+```
+
+**`.gitignore`** already covers `packages/*/android/build/`; nothing to do.
+
 ---
 
 ## M2 — The generated Kotlin tree model

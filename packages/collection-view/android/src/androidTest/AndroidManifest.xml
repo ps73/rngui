@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    Hosts the M1 row-backend spike. Test-only: it is never merged into the library's own manifest,
+    so nothing here reaches a consuming app.
+
+    A bare `Theme.Material.Light.NoActionBar` on purpose. The spike compares what a row costs to
+    draw, and a theme carrying window backgrounds or overlays would put the same overdraw on both
+    sides of the comparison while adding noise to each.
+  -->
+  <application>
+    <activity
+      android:name="com.rngui.collectionview.spike.SpikeActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+  </application>
+</manifest>

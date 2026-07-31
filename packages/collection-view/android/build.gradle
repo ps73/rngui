@@ -8,9 +8,34 @@
  * "plugin was loaded multiple times in different subprojects". The library is not buildable
  * standalone, and that is intentional: `npm run verify` covers the TypeScript and Swift
  * contracts, and the Kotlin is compiled by the example app.
+ *
+ * The Compose compiler plugin is the **one** exception, and it is here under protest.
+ *
+ * Since Kotlin 2.0 the Compose compiler ships as a Gradle plugin rather than as a compiler
+ * artifact, and — measured, not assumed — `org.jetbrains.kotlin.plugin.compose` is *not* on the
+ * root classpath of an Expo app: applying it plainly fails with "Plugin with id ... not found",
+ * exactly as `org.jetbrains.kotlin.plugin.serialization` does. A library cannot ask consumers to
+ * edit their root `build.gradle`, so the classpath is declared here.
+ *
+ * The version is read off `rootProject.ext.kotlinVersion` rather than pinned, which is what keeps
+ * this from being the version-skew problem the paragraph above warns about: the Compose compiler
+ * plugin must match the Kotlin compiler exactly, and the app is the one that decides both. The
+ * literal is a floor for apps that publish no value, not a preference.
  */
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:" +
+      (rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : "2.1.20")
+  }
+}
+
 apply plugin: "com.android.library"
 apply plugin: "org.jetbrains.kotlin.android"
+apply plugin: "org.jetbrains.kotlin.plugin.compose"
 
 /**
  * Runs codegen for the `codegenConfig` block in package.json, and adds its output —
@@ -32,6 +57,7 @@ android {
 
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 24)
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
   // Both halves are required and have to agree. AGP compiles Java at the app's target, while
@@ -40,6 +66,10 @@ android {
   compileOptions {
     sourceCompatibility JavaVersion.VERSION_17
     targetCompatibility JavaVersion.VERSION_17
+  }
+
+  buildFeatures {
+    compose true
   }
 
   lint {
@@ -79,10 +109,35 @@ dependencies {
   // from what the app resolves.
   implementation "com.facebook.react:react-native:+"
 
+  implementation "androidx.recyclerview:recyclerview:1.4.0"
+
+  // The BOM keeps the Compose artifacts consistent with each other. It does *not* pin them
+  // against the Compose compiler plugin above — that one tracks the app's Kotlin version, and the
+  // runtime/compiler compatibility check is the compiler's own.
+  //
+  // Only the runtime is a main-source dependency, and only because the compiler plugin refuses to
+  // run without one on the classpath ("The Compose Compiler requires the Compose Runtime to be on
+  // the class path"). Nothing in `src/main` composes yet: M1 measured the stock row kinds onto
+  // hand-built Views, and Compose arrives properly at M7 for the control-bearing kinds. Until
+  // then `ui` and `material3` stay on the test classpath, so a consumer's APK does not carry a
+  // toolkit this library is not yet using.
+  implementation platform("androidx.compose:compose-bom:2025.06.01")
+  implementation "androidx.compose.runtime:runtime"
+
   testImplementation "junit:junit:4.13.2"
   // The generated decoders use `org.json`, which is part of the platform on a device but is a
   // signature-only stub in the `android.jar` unit tests compile against — every method throws
   // "not mocked". This is the real implementation, on the test classpath only, so it never
   // reaches the AAR and never duplicates the platform's copy at runtime.
   testImplementation "org.json:json:20250517"
+
+  // The M1 row-backend spike. Instrumented rather than local, because the question it answers is
+  // about frame times and there is no such thing as a frame on the JVM.
+  androidTestImplementation "androidx.test:runner:1.6.2"
+  androidTestImplementation "androidx.test:rules:1.6.1"
+  androidTestImplementation "androidx.test.ext:junit:1.2.1"
+  androidTestImplementation "androidx.activity:activity:1.9.3"
+  androidTestImplementation platform("androidx.compose:compose-bom:2025.06.01")
+  androidTestImplementation "androidx.compose.ui:ui"
+  androidTestImplementation "androidx.compose.material3:material3"
 }
