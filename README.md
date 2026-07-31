@@ -5,9 +5,9 @@ Native UI components for React Native. Each component is a genuine platform view
 
 ## Packages
 
-| Package                                              | What it is                                                                              |
-| ---------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| [`@rngui/collection-view`](packages/collection-view) | A real iOS `UICollectionView`; Android `RecyclerView` + Material 3 Expressive to follow |
+| Package                                                     | What it is                                                                              |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| [`@rngui/collection-view`](packages/collection-view#readme) | A real iOS `UICollectionView`; Android `RecyclerView` + Material 3 Expressive to follow |
 
 Install only what you use:
 
@@ -21,18 +21,36 @@ compiles and links every podspec and Kotlin source set it finds, whether or not 
 import the component. An umbrella would make every app pay the full build time and binary
 size of the whole family to use one view.
 
-`@rngui/core` is the exception, and only because it is **pure JavaScript** — no podspec, no
-`android/`, no `react-native.config.js`, so autolinking cannot see it at all.
+The exception, whenever there is enough shared code to justify extracting it, would be a
+pure-JavaScript `@rngui/core`: no podspec, no `android/`, no `react-native.config.js`, so
+autolinking cannot see it at all and it costs nothing to depend on. It does not exist yet —
+one component is not enough consumers to design a shared layer against.
 
 ## Layout
 
 ```
-packages/*      one publishable component each, plus the pure-JS core
+packages/*      one publishable component each
 apps/example/   a single kitchen-sink app that imports them all
 ```
 
 One example app rather than one per package — `prebuild` + `pod install` + codegen is the
 slowest loop in the repo, and there is no reason to pay it per component.
+
+## The example app
+
+Five screens, each chosen because it is hard in a different way:
+
+| Screen        | What it is for                                                                                                                                           |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Settings**  | The three stock cell kinds, a hosted React child, and thirty numbered rows to scroll through pooled cells                                                |
+| **Reminders** | Every row kind — switches, text fields, an auto-growing text area, menus, inline date pickers, swipe actions — plus keyboard avoidance and a `formSheet` |
+| **Contacts**  | 2,000 rows, `plain` with pinned section headers, and the A–Z scrubber                                                                                    |
+| **Health**    | A horizontally scrolling chip strip inside a vertical list, gradient background, recycling `Card` rows beside a one-off hosted chart                     |
+| **Custom**    | Theming played with live, a self-measuring hosted row, a `@gorhom/bottom-sheet` integration, and 200 windowed hosted rows                                |
+
+A blurred large-title header is the default on every one of them, deliberately: it is the
+hardest case for a custom scroll view, so every screen is a live test that UIKit still finds
+the collection view and collapses the title against it.
 
 ## Why React Native codegen, not Nitro Modules
 
@@ -51,13 +69,27 @@ clipped, hit-tested and scrolled by UIKit for free.
 
 ```bash
 npm install                  # links every workspace
-npm run typecheck            # fans out across all packages + the example
+npm run verify               # typecheck, regenerate the Swift model, run its contract tests
 npm run ios                  # builds and runs the example on a simulator
+npm run android              # ditto, against the Android stub
+npm run lint                 # prettier --check
 ```
 
 Packages are consumed **from source**: each points `source`/`react-native` at `src/index`,
 and the example's Metro config watches the repo root. Editing TypeScript needs no rebuild;
-editing Swift or Kotlin does.
+editing Swift or Kotlin does. A change to a codegen spec needs `pod install` before the next
+iOS build, because that is when the generated `Props.h` is rewritten.
+
+### The generated Swift model
+
+`packages/collection-view/src/tree.ts` is the single source of truth for the descriptor tree,
+and `npm run gen` compiles it into Swift `Codable` structs plus a golden fixture and the
+assertions that check every field round-trips. The output is **committed**, so `pod install`
+never needs Node and a schema change shows up in a diff — and `npm run verify` fails if it is
+stale.
+
+The tests are built by SwiftPM rather than Xcode (`swift test`, seconds, no simulator), which
+is possible only because the generated model depends on nothing but Foundation.
 
 ## License
 
