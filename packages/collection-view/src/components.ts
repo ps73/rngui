@@ -140,6 +140,16 @@ export interface IconProps {
   systemImage: string
   /** Overrides the glyph colour. Defaults to the row's tint. */
   color?: string
+  /**
+   * Draws the glyph white on a rounded tile of this colour — the Settings look.
+   *
+   * Replaces `color` rather than combining with it. Settings reserves colour for the square and
+   * always draws the glyph on it in white, which is what keeps a screen of twenty different hues
+   * legible.
+   */
+  background?: string
+  /** The glyph's point size. Ignored when `background` is set — the tile decides its own. */
+  size?: number
 }
 
 /**

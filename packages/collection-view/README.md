@@ -69,11 +69,17 @@ second source of truth to disagree with the children.
 | `Description` | Second line. `tinted` draws it in the tint colour rather than grey |
 | `Value`       | Trailing detail text                                               |
 
-| Accessories                         |                                        |
-| ----------------------------------- | -------------------------------------- |
-| `Icon`                              | `systemImage` · `color` — an SF Symbol |
-| `Chevron` · `Checkmark` · `Spinner` |                                        |
-| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled` |
+| Accessories                         |                                                        |
+| ----------------------------------- | ------------------------------------------------------ |
+| `Icon`                              | `systemImage` · `color` · `background` · `size`        |
+| `Chevron` · `Checkmark` · `Spinner` |                                                        |
+| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`                 |
+
+An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
+glyph reads as an interactive control. Give it a `background` and it becomes Settings' rounded
+coloured tile instead: a white glyph on a 29pt continuous-corner square, rendered once per
+symbol-and-colour and cached, with the layout width reserved so untiled rows in the same section
+still line up.
 
 | Controls     |                                                                                                                                          |
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |

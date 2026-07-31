@@ -165,6 +165,19 @@ export interface RowSpec {
   /** Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing. */
   imageColor?: string
   /**
+   * Fills a rounded tile behind the glyph and draws the glyph white — Settings' coloured squares.
+   *
+   * Set, this replaces `imageColor` rather than combining with it: the point of a tile is that the
+   * colour is the *background*, and a Settings row has never had a tinted glyph on a tinted square.
+   * Normalised to `#RRGGBBAA` before crossing.
+   */
+  imageBackground?: string
+  /**
+   * The glyph's point size, for a bare symbol. Ignored when `imageBackground` is set, where the
+   * tile's own size decides.
+   */
+  imageSize?: number
+  /**
    * Draws `secondaryLabel` in the tint colour rather than as grey detail text.
    *
    * This is the "Today" / "15:00" under Reminders' Date and Time rows: the tint is what marks the

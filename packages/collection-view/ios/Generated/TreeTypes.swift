@@ -290,6 +290,15 @@ struct RowSpec: Decodable, Equatable {
   var systemImage: String?
   /// Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing.
   var imageColor: String?
+  /// Fills a rounded tile behind the glyph and draws the glyph white — Settings' coloured squares.
+  ///
+  /// Set, this replaces `imageColor` rather than combining with it: the point of a tile is that the
+  /// colour is the *background*, and a Settings row has never had a tinted glyph on a tinted square.
+  /// Normalised to `#RRGGBBAA` before crossing.
+  var imageBackground: String?
+  /// The glyph's point size, for a bare symbol. Ignored when `imageBackground` is set, where the
+  /// tile's own size decides.
+  var imageSize: Double?
   /// Draws `secondaryLabel` in the tint colour rather than as grey detail text.
   ///
   /// This is the "Today" / "15:00" under Reminders' Date and Time rows: the tint is what marks the
@@ -349,7 +358,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, imageColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, imageColor, imageBackground, imageSize, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -365,6 +374,8 @@ struct RowSpec: Decodable, Equatable {
     accessory = try container.decodeIfPresent(AccessoryKind.self, forKey: .accessory)
     systemImage = try container.decodeIfPresent(String.self, forKey: .systemImage)
     imageColor = try container.decodeIfPresent(String.self, forKey: .imageColor)
+    imageBackground = try container.decodeIfPresent(String.self, forKey: .imageBackground)
+    imageSize = try container.decodeIfPresent(Double.self, forKey: .imageSize)
     secondaryLabelTinted = try container.decodeIfPresent(Bool.self, forKey: .secondaryLabelTinted)
     font = try container.decodeIfPresent(FontSpec.self, forKey: .font)
     selectable = try container.decodeIfPresent(Bool.self, forKey: .selectable)

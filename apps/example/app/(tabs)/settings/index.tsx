@@ -1,86 +1,129 @@
+import { useMemo, useState } from 'react'
+import { Stack } from 'expo-router'
 import { CollectionView } from '@rngui/collection-view'
-import { Text, View } from 'react-native'
-import { StyleSheet } from 'react-native-unistyles'
+import { useUnistyles } from 'react-native-unistyles'
+import { SETTINGS_SECTIONS } from '../../../src/data/settings'
 
 /**
- * Target: a near-1:1 rebuild of the iOS Settings app.
+ * The iOS Settings root screen, rebuilt.
  *
- * Right now it exercises the descriptor pipeline end to end — sections with headers and
- * footers, the three stock cell presets, accessories, and one `Host` row holding a real React
- * Native view. Deliberately the *first* tab so it sits next to the `ScrollView`-based screens
- * in the other tabs: the large title, the blur fade and the top and bottom insets should be
- * indistinguishable between them, and any difference is a bug here.
+ * Not a showcase of the library's features — a copy of a screen, which is a harder and more useful
+ * test. Everything here is something Settings does, and therefore something the component has to do
+ * the same way:
+ *
+ * - **The rounded coloured tiles.** `<CollectionView.Icon background>` draws a white glyph on a
+ *   29pt continuous-corner square. Settings is unmistakable because of these, and the corner curve
+ *   and the reserved layout width are the difference between a copy and an impression.
+ * - **A real search bar in the header**, via `headerSearchBarOptions` — react-native-screens puts a
+ *   `UISearchController` on the navigation item, and the list it filters stays entirely native.
+ * - **An account row taller than the rest**, with a large glyph and two lines of text.
+ * - **A switch on one row and a disclosure on the next**, inside one section, which is where a list
+ *   that fakes its cells usually gives itself away.
+ *
+ * Deliberately the *first* tab, so it sits beside the `ScrollView`-based screens in the others: the
+ * large title, the blur fade and the insets should be indistinguishable, and any difference is a
+ * bug here.
+ *
+ * The one thing not copied is the account row's photo — Settings shows the user's picture, and an
+ * SF Symbol is as close as this gets without an asset pipeline.
  */
 export default function SettingsScreen() {
+  // Read here rather than only inside `StyleSheet.create`, because these colours are *props* on the
+  // rows and have to cross into the tree. Unistyles re-renders this screen on an appearance change,
+  // which is what gets the dark-mode palette down to the tiles — see the note in `unistyles.ts`.
+  const { theme } = useUnistyles()
+  const [airplane, setAirplane] = useState(false)
+  const [query, setQuery] = useState('')
+
+  const sections = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    if (needle === '') return SETTINGS_SECTIONS
+    // Sections that lose every row are dropped rather than left as empty headed groups. An empty
+    // rounded card with nothing in it reads as a bug, and it is not what Settings does.
+    return SETTINGS_SECTIONS.map((section) => ({
+      ...section,
+      rows: section.rows.filter((row) =>
+        row.title.toLowerCase().includes(needle)
+      ),
+    })).filter((section) => section.rows.length > 0)
+  }, [query])
+
   return (
-    <CollectionView.Root>
-      <CollectionView.Section
-        header="Stock cells"
-        footer="Three UIListContentConfiguration presets. The kind is inferred in JS from which slots a row fills, so there is never a second source of truth to disagree with the children."
-      >
-        <CollectionView.Row>
-          <CollectionView.Label>Airplane Mode</CollectionView.Label>
-        </CollectionView.Row>
-
-        <CollectionView.Row onPress={() => {}}>
-          <CollectionView.Label>Wi-Fi</CollectionView.Label>
-          <CollectionView.Value>Not Connected</CollectionView.Value>
-          <CollectionView.Chevron />
-        </CollectionView.Row>
-
-        <CollectionView.Row>
-          <CollectionView.Label>Bluetooth</CollectionView.Label>
-          <CollectionView.Description>
-            Two devices connected
-          </CollectionView.Description>
-        </CollectionView.Row>
-
-        <CollectionView.Row>
-          <CollectionView.Label>Automatic</CollectionView.Label>
-          <CollectionView.Checkmark />
-        </CollectionView.Row>
-      </CollectionView.Section>
-
-      <CollectionView.Section
-        header="Hosted React child"
-        footer="A real React Native view, reparented into the cell's contentView rather than floated over it — so UIKit clips it, hit-tests it and scrolls it with the list."
-      >
-        <CollectionView.Host height={120}>
-          <View style={styles.hosted}>
-            <Text style={styles.hostedLabel}>React Native child</Text>
-          </View>
-        </CollectionView.Host>
-      </CollectionView.Section>
-
+    <>
       {/*
-        Long enough to actually scroll. Without this the screen is shorter than the viewport,
-        and a large title that never collapses is indistinguishable from one that has nothing
-        to collapse against. Mapped rather than written out so the `key`-derived row id
-        fallback and cell recycling both get exercised.
+        The search bar belongs to the navigation item rather than to the list, which is why it never
+        scrolls away with the content and why `hideWhenScrolling` is UIKit's behaviour rather than
+        something implemented here. Configured on the screen rather than in `_layout.tsx` because
+        `onChangeText` has to reach this component's state.
       */}
-      <CollectionView.Section header="Recycling">
-        {Array.from({ length: 30 }, (_, i) => (
-          <CollectionView.Row key={i}>
-            <CollectionView.Label>{`Recycled row ${i + 1}`}</CollectionView.Label>
-            <CollectionView.Value>{String(i + 1)}</CollectionView.Value>
-          </CollectionView.Row>
+      <Stack.Screen
+        options={{
+          headerSearchBarOptions: {
+            placeholder: 'Search',
+            onChangeText: (event) => setQuery(event.nativeEvent.text),
+            onCancelButtonPress: () => setQuery(''),
+            hideWhenScrolling: true,
+          },
+        }}
+      />
+
+      <CollectionView.Root>
+        {/* Unheaded, as in Settings: the account is not a category, it is who you are. */}
+        {query.trim() === '' && (
+          <CollectionView.Section id="account">
+            <CollectionView.Row
+              id="apple-account"
+              height={76}
+              onPress={() => {}}
+            >
+              <CollectionView.Icon
+                systemImage="person.crop.circle.fill"
+                color={theme.colors.system.gray}
+                size={52}
+              />
+              <CollectionView.Label>Phil Schaffarzyk</CollectionView.Label>
+              <CollectionView.Description>
+                Apple Account, iCloud, and more
+              </CollectionView.Description>
+              <CollectionView.Chevron />
+            </CollectionView.Row>
+          </CollectionView.Section>
+        )}
+
+        {sections.map((section) => (
+          <CollectionView.Section key={section.id} id={section.id}>
+            {section.rows.map((row) => (
+              <CollectionView.Row
+                key={row.id}
+                id={row.id}
+                // A switch row is not a link, so it gets no press target and therefore no highlight.
+                // Settings behaves the same way: pressing the Airplane Mode row does nothing.
+                onPress={row.toggle ? undefined : () => {}}
+              >
+                <CollectionView.Icon
+                  systemImage={row.systemImage}
+                  background={theme.colors.system[row.tile]}
+                />
+                <CollectionView.Label>{row.title}</CollectionView.Label>
+
+                {row.toggle ? (
+                  <CollectionView.Switch
+                    value={airplane}
+                    onValueChange={setAirplane}
+                  />
+                ) : (
+                  <>
+                    {row.value != null && (
+                      <CollectionView.Value>{row.value}</CollectionView.Value>
+                    )}
+                    <CollectionView.Chevron />
+                  </>
+                )}
+              </CollectionView.Row>
+            ))}
+          </CollectionView.Section>
         ))}
-      </CollectionView.Section>
-    </CollectionView.Root>
+      </CollectionView.Root>
+    </>
   )
 }
-
-const styles = StyleSheet.create((theme) => ({
-  hosted: {
-    flex: 1,
-    backgroundColor: theme.colors.destructive,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  hostedLabel: {
-    color: '#FFFFFF',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-}))

@@ -270,10 +270,14 @@ function serializeRow(
 
   const icon = findByTag(children, 'icon')
   if (icon != null) {
-    const { systemImage, color } = icon.props as unknown as IconProps
+    const { systemImage, color, background, size } =
+      icon.props as unknown as IconProps
     row.systemImage = systemImage
     const resolved = resolveColor(color)
     if (resolved != null) row.imageColor = resolved
+    const resolvedBackground = resolveColor(background)
+    if (resolvedBackground != null) row.imageBackground = resolvedBackground
+    if (size != null) row.imageSize = size
   }
 
   const value = findByTag(children, 'value')

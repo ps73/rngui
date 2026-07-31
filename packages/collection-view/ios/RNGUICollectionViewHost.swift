@@ -703,11 +703,45 @@ public final class RNGUICollectionViewHost: NSObject {
    * specified — and this function is one refactor away from being handed a reused configuration.
    */
   private func applyImage(_ row: RowSpec, to content: inout UIListContentConfiguration) {
-    guard let name = row.systemImage, let image = UIImage(systemName: name) else {
+    guard let name = row.systemImage else {
+      content.image = nil
+      return
+    }
+
+    // The Settings look: a white glyph on a coloured tile. Checked first because it replaces the
+    // bare-symbol path outright rather than decorating it — `imageColor` has no meaning here, and
+    // the tile is already every colour it needs.
+    if let hex = row.imageBackground, let background = UIColor(rnguiHex: hex) {
+      let tile = IconTile.image(symbol: name, background: background)
+      content.image = tile
+      // Reserved so that rows *without* a tile still align their text with the ones that have it.
+      // A Settings section where one row's label starts 29pt further left than its neighbours is
+      // the giveaway that this was assembled rather than laid out.
+      content.imageProperties.reservedLayoutSize = CGSize(
+        width: IconTile.edge,
+        height: IconTile.edge
+      )
+      content.imageProperties.maximumSize = CGSize(
+        width: IconTile.edge,
+        height: IconTile.edge
+      )
+      content.imageProperties.tintColor = nil
+      return
+    }
+
+    guard let image = UIImage(systemName: name) else {
       content.image = nil
       return
     }
     content.image = image
+    content.imageProperties.reservedLayoutSize = .zero
+    content.imageProperties.maximumSize = .zero
+    if let size = row.imageSize {
+      content.imageProperties.preferredSymbolConfiguration =
+        UIImage.SymbolConfiguration(pointSize: CGFloat(size))
+    } else {
+      content.imageProperties.preferredSymbolConfiguration = nil
+    }
     // Grey by default, not the list tint. A tinted glyph reads as an interactive control, and in a
     // list these are labels for the row — which is why Reminders' calendar and clock are grey while
     // Settings reserves colour for its rounded tiles. `.secondaryLabel` rather than a fixed grey
