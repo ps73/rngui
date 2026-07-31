@@ -28,7 +28,6 @@
     "ios",
     "android/src",
     "android/build.gradle",
-    "android/gradle.properties",
     "*.podspec",
     "react-native.config.js",
     "!**/__tests__",

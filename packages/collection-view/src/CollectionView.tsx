@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, type ReactNode } from 'react'
 import {
+  Platform,
   StyleSheet,
   View,
   type NativeSyntheticEvent,
@@ -182,6 +183,36 @@ let nextRevision = 1
 const GROUPED_CARD_MARGIN = 16
 
 /**
+ * Android is a stub: the view manager accepts every prop and draws nothing.
+ *
+ * Warned about here rather than logged from Kotlin, because the person who needs to read it is
+ * writing JavaScript — and because Metro surfaces this in the same console as everything else,
+ * while `Log.w` needs logcat. Once per process: this is a property of the platform, not of a
+ * particular list, so one warning per mounted `Root` would be noise.
+ */
+let warnedAboutAndroid = false
+
+/**
+ * Whether this platform can place a hosted React child inside a cell.
+ *
+ * Written as "is iOS" rather than "is not Android" on purpose: hosting is a capability that has to
+ * be built per platform, so a platform this library has never heard of should inherit "no", not
+ * "yes".
+ */
+const HOSTS_CHILDREN = Platform.OS === 'ios'
+
+function warnIfAndroid() {
+  if (!__DEV__ || Platform.OS !== 'android' || warnedAboutAndroid) return
+  warnedAboutAndroid = true
+  console.warn(
+    '[@rngui/collection-view] Android is not implemented yet — <CollectionView.Root> renders ' +
+      'nothing on this platform, including any <CollectionView.Host> children. The props are ' +
+      'accepted so shared screens keep type-checking and building; the RecyclerView backend is ' +
+      'still to come.'
+  )
+}
+
+/**
  * A real `UICollectionView`.
  *
  * The children are never mounted — `Section`, `Row` and the slot components all render `null`
@@ -212,6 +243,8 @@ export function Root({
   children,
   ...rest
 }: RootProps) {
+  warnIfAndroid()
+
   const serialized = useMemo(() => {
     const registry = createRegistry()
     return { registry, ...serialize(children, registry) }
@@ -363,29 +396,39 @@ export function Root({
         onVisibleRangeChange={handleVisibleRangeChange}
         {...handlers}
       >
-        {serialized.hosted.map((child, index) => (
-          <View
-            key={index}
-            // Guarantees exactly one native view per host, in a mount order that matches
-            // `RowSpec.hostIndex`. Without it React Native is free to flatten the wrapper away
-            // and the indices stop lining up.
-            collapsable={false}
-            style={[
-              styles.hosted,
-              {
-                height: child.height,
-                // Yoga lays this subtree out here, against the collection view's full width, but
-                // the cell it ends up in is inset by the grouped style's margin. The native side
-                // corrects the wrapper's own frame, which is not enough: without matching the
-                // inset here, everything *inside* is measured for a container ~40pt too wide, so
-                // a row of chips or a two-column layout lands subtly wrong.
-                marginHorizontal: hostedMargin,
-              },
-            ]}
-          >
-            {child.node}
-          </View>
-        ))}
+        {/*
+          Only iOS mounts hosted children, and the omission elsewhere is deliberate rather than a
+          guard against a crash. Every host wrapper is positioned absolutely with no `top`, because
+          on iOS the cell that claims it supplies the vertical position; with no cells to claim
+          them they would all pile up at the origin, which reads as a broken implementation rather
+          than an unimplemented one. Withheld here rather than hidden natively so the subtree is
+          never mounted at all — no effects, no timers, no work for content nobody can see.
+        */}
+        {!HOSTS_CHILDREN
+          ? null
+          : serialized.hosted.map((child, index) => (
+              <View
+                key={index}
+                // Guarantees exactly one native view per host, in a mount order that matches
+                // `RowSpec.hostIndex`. Without it React Native is free to flatten the wrapper away
+                // and the indices stop lining up.
+                collapsable={false}
+                style={[
+                  styles.hosted,
+                  {
+                    height: child.height,
+                    // Yoga lays this subtree out here, against the collection view's full width,
+                    // but the cell it ends up in is inset by the grouped style's margin. The native
+                    // side corrects the wrapper's own frame, which is not enough: without matching
+                    // the inset here, everything *inside* is measured for a container ~40pt too
+                    // wide, so a row of chips or a two-column layout lands subtly wrong.
+                    marginHorizontal: hostedMargin,
+                  },
+                ]}
+              >
+                {child.node}
+              </View>
+            ))}
       </NativeCollectionView>
     </AppearanceProvider>
   )
