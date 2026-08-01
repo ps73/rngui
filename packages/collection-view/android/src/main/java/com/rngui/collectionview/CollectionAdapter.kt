@@ -25,6 +25,7 @@ import androidx.recyclerview.widget.RecyclerView
  */
 class CollectionAdapter(
   private var style: RowStyle,
+  private var listStyle: ListStyle,
   private val onRowPress: (rowId: String) -> Unit,
 ) : ListAdapter<Item, RecyclerView.ViewHolder>(DIFF) {
 
@@ -35,10 +36,15 @@ class CollectionAdapter(
    * a new list through `submitList` would be asking `DiffUtil` to prove that 2,000 unchanged items
    * are unchanged. `notifyItemRangeChanged` rebinds them and says so.
    */
-  fun restyle(style: RowStyle) {
+  fun restyle(style: RowStyle, listStyle: ListStyle) {
     this.style = style
+    this.listStyle = listStyle
     notifyItemRangeChanged(0, itemCount)
   }
+
+  /** For the decoration, which reads items by adapter position while drawing. */
+  fun itemAtOrNull(position: Int): Item? =
+    if (position in 0 until itemCount) getItem(position) else null
 
   override fun getItemViewType(position: Int): Int =
     when (getItem(position)) {
@@ -61,7 +67,17 @@ class CollectionAdapter(
       is Item.Row -> {
         val view = (holder as RowHolder).view
         view.bind(item.row, style)
-        style.rowBackground?.let(view::setBackgroundColor)
+        // Rebuilt per bind rather than cached per position: the shape depends on where the row
+        // sits in its section, and a recycled holder arriving at a different position would
+        // otherwise keep the previous occupant's corners. The reuse rule reaches drawables too.
+        view.background =
+          GroupShape.background(
+            context = view.context,
+            position = item.positionInSection,
+            appearance = listStyle.appearance,
+            rowBackground = listStyle.rowBackground,
+            labelColor = listStyle.labelColor,
+          )
         // Set unconditionally, including to null: a recycled holder keeps the listener the last
         // row installed, and a non-selectable row inheriting one is a row that reports a press
         // nobody can see it accepting.
@@ -92,21 +108,23 @@ class CollectionAdapter(
     const val TYPE_ROW = 3
 
     /**
-     * Headers and footers, unstyled beyond their colour.
+     * A section header or footer.
      *
-     * M4 owns their typography, their spacing against the group above and the grouped-card shape
-     * around the rows between them. This is the minimum that puts them on screen in the right
-     * order, which is what M3 is for.
+     * Both are a single line of small caps-ish text against the list background rather than
+     * against a card, which is what puts the visual break between two groups. The vertical
+     * padding is deliberately asymmetric — a header hugs the card below it and a footer the card
+     * above — because that is what makes a footer read as belonging to the group it explains
+     * rather than to the one that follows.
      */
     fun supplementaryView(context: Context, isHeader: Boolean): TextView =
       TextView(context).apply {
-        textSize = if (isHeader) 13f else 13f
+        textSize = 13f
         gravity = Gravity.BOTTOM
         setPadding(
-          context.dp(16),
-          context.dp(if (isHeader) 24 else 6),
-          context.dp(16),
-          context.dp(if (isHeader) 6 else 16),
+          context.dp(GroupShape.INSET_DP + 4),
+          context.dp(if (isHeader) 0 else 6),
+          context.dp(GroupShape.INSET_DP + 4),
+          context.dp(if (isHeader) 6 else 0),
         )
         layoutParams =
           LinearLayout.LayoutParams(

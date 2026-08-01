@@ -10,6 +10,7 @@ import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.Event
 import com.rngui.collectionview.generated.Appearance
+import com.rngui.collectionview.generated.ListAppearance
 import com.rngui.collectionview.generated.Tree
 
 /**
@@ -60,6 +61,9 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   private var appearance: Appearance? = null
   private var darkAppearance: Appearance? = null
 
+  /** `insetGrouped` unless the tree says otherwise, matching the JS default. */
+  private var listAppearance: ListAppearance = ListAppearance.insetGrouped
+
   /**
    * The configuration the appearance resolves against.
    *
@@ -81,11 +85,16 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   // it before it was assigned and hand a null to a non-null parameter. Which is exactly what the
   // first version of this file did, and it crashed on mount rather than at compile time — the
   // platform declaration is `@NonNull`, so the check is a runtime one.
-  private val adapter = CollectionAdapter(RowStyle.of(resolver()), onRowPress = ::emitRowPress)
+  private val adapter =
+    CollectionAdapter(rowStyle(), listStyle(), onRowPress = ::emitRowPress)
+
+  private val decoration = GroupDecoration(listStyle())
 
   init {
     addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     list.adapter = adapter
+    list.addItemDecoration(decoration)
+    applyBackground()
   }
 
   /**
@@ -144,6 +153,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       val tree = Tree.decode(pendingTree)
       appearance = tree.appearance
       darkAppearance = tree.darkAppearance
+      listAppearance = tree.listAppearance ?: ListAppearance.insetGrouped
       flattened = FlattenedTree.of(tree)
       adapter.submitList(flattened.items)
     }
@@ -175,7 +185,30 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     restyle()
   }
 
-  private fun restyle() = adapter.restyle(RowStyle.of(resolver()))
+  private fun restyle() {
+    val list = listStyle()
+    decoration.restyle(list)
+    adapter.restyle(rowStyle(), list)
+    applyBackground()
+    // The decoration draws from `onDraw`, which only runs on a draw pass — and a restyle that
+    // changes nothing about layout would not schedule one.
+    this.list.invalidateItemDecorations()
+  }
+
+  private fun rowStyle() = RowStyle.of(resolver())
+
+  private fun listStyle() =
+    ListStyle.of(context, resolver(), rowStyle(), listAppearance)
+
+  /**
+   * The colour behind the cards.
+   *
+   * On the wrapper rather than on the `RecyclerView`, so M8's hidden host container and M5's
+   * fast-scroller bubble sit on it too rather than on whatever is behind the whole component.
+   */
+  private fun applyBackground() {
+    setBackgroundColor(listStyle().backgroundColor)
+  }
 
   private fun resolver(): AppearanceResolver =
     AppearanceResolver(
