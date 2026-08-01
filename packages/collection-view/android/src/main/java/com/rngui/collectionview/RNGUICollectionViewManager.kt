@@ -1,5 +1,6 @@
 package com.rngui.collectionview
 
+import com.facebook.react.common.MapBuilder
 import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
@@ -8,17 +9,13 @@ import com.facebook.react.viewmanagers.RNGUICollectionViewManagerDelegate
 import com.facebook.react.viewmanagers.RNGUICollectionViewManagerInterface
 
 /**
- * The Android view manager for `RNGUICollectionView` — a stub that accepts the full prop contract
- * and renders nothing.
+ * The Android view manager for `RNGUICollectionView`.
  *
- * Implementing `RNGUICollectionViewManagerInterface` is what makes this a stub rather than a
- * guess: that interface is generated from `src/specs/RNGUICollectionViewNativeComponent.ts`, so
- * the Kotlin compiler fails the build the moment a prop is added, removed or retyped on the
- * JavaScript side. The no-op bodies are the deliberate part; the signatures are not ours to
- * choose.
- *
- * No `getExportedCustomDirectEventTypeConstants`: the stub never dispatches an event, and
- * declaring event names nothing can emit would only suggest otherwise.
+ * Implementing `RNGUICollectionViewManagerInterface` is the guarantee this file is built on: that
+ * interface is generated from `src/specs/RNGUICollectionViewNativeComponent.ts`, so the Kotlin
+ * compiler fails the build the moment a prop is added, removed or retyped on the JavaScript side.
+ * A prop cannot be forgotten on one platform. The signatures are not ours to choose, and the
+ * bodies that are still `Unit` say which milestone owns them rather than pretending to be done.
  */
 @ReactModule(name = RNGUICollectionViewManager.NAME)
 class RNGUICollectionViewManager :
@@ -42,20 +39,52 @@ class RNGUICollectionViewManager :
   // spec — which is the entire value of the stub.
   // ---------------------------------------------------------------------------------------------
 
+  // Three props are stashed rather than applied. Fabric writes props one setter at a time in no
+  // guaranteed order, so acting here would mean decoding a tree against the wrong revision half
+  // the time; `onAfterUpdateTransaction` below is where they land together.
+
   override fun setTree(
     view: RNGUICollectionViewView,
     value: String?,
-  ) = Unit
+  ) {
+    view.pendingTree = value
+  }
 
   override fun setRevision(
     view: RNGUICollectionViewView,
     value: Int,
-  ) = Unit
+  ) {
+    view.pendingRevision = value
+  }
 
   override fun setColorScheme(
     view: RNGUICollectionViewView,
     value: String?,
-  ) = Unit
+  ) {
+    view.pendingColorScheme = ColorScheme.from(value)
+  }
+
+  /**
+   * The Android analogue of iOS's `updateProps`: called once after every prop in a transaction has
+   * been written, which is the only point at which `tree` and `revision` are both current.
+   */
+  override fun onAfterUpdateTransaction(view: RNGUICollectionViewView) {
+    super.onAfterUpdateTransaction(view)
+    view.commitProps()
+  }
+
+  /**
+   * Maps each event class's name to the prop React should call.
+   *
+   * Without an entry here the dispatcher cannot resolve the name and drops the event in silence —
+   * no warning, no crash, just a list that ignores taps. Which is why `RowPressEvent.NAME` is the
+   * `topRowPress` form rather than `onRowPress`.
+   */
+  override fun getExportedCustomDirectEventTypeConstants(): MutableMap<String, Any> =
+    mutableMapOf(
+      RowPressEvent.NAME to MapBuilder.of("registrationName", "onRowPress"),
+      VisibleRangeChangeEvent.NAME to MapBuilder.of("registrationName", "onVisibleRangeChange"),
+    )
 
   override fun setShowsSectionIndex(
     view: RNGUICollectionViewView,
@@ -153,16 +182,19 @@ class RNGUICollectionViewManager :
   ) = Unit
 
   /**
-   * A command rather than a prop, and the delegate routes it here whether or not there is
-   * anything to scroll. Nothing does — but reanimated calls this from a worklet on every frame
-   * of a bottom-sheet drag, so it has to exist and has to be cheap.
+   * A command rather than a prop, because the caller is reanimated rather than React.
+   *
+   * Called from a worklet on every frame of a bottom-sheet drag, so it has to be cheap. `x` is
+   * ignored: the list scrolls on one axis, and M9's chip strips scroll themselves.
    */
   override fun scrollTo(
     view: RNGUICollectionViewView,
     x: Double,
     y: Double,
     animated: Boolean,
-  ) = Unit
+  ) {
+    view.scrollTo(y, animated)
+  }
 
   companion object {
     /**

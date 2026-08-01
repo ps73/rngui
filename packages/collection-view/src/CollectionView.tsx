@@ -257,7 +257,7 @@ let nextRevision = 1
 const GROUPED_CARD_MARGIN = 16
 
 /**
- * Android is a stub: the view manager accepts every prop and draws nothing.
+ * Android renders, but does not host React children yet.
  *
  * Warned about here rather than logged from Kotlin, because the person who needs to read it is
  * writing JavaScript — and because Metro surfaces this in the same console as everything else,
@@ -275,14 +275,22 @@ let warnedAboutAndroid = false
  */
 const HOSTS_CHILDREN = Platform.OS === 'ios'
 
-function warnIfAndroid() {
-  if (!__DEV__ || Platform.OS !== 'android' || warnedAboutAndroid) return
+function warnIfAndroid(hasHostedChildren: boolean) {
+  // Only worth saying when the screen actually has a `Host` row. A list of stock rows renders on
+  // Android now, and warning about a capability it is not using would be noise of exactly the kind
+  // people learn to scroll past.
+  if (
+    !__DEV__ ||
+    Platform.OS !== 'android' ||
+    warnedAboutAndroid ||
+    !hasHostedChildren
+  )
+    return
   warnedAboutAndroid = true
   console.warn(
-    '[@rngui/collection-view] Android is not implemented yet — <CollectionView.Root> renders ' +
-      'nothing on this platform, including any <CollectionView.Host> children. The props are ' +
-      'accepted so shared screens keep type-checking and building; the RecyclerView backend is ' +
-      'still to come.'
+    '[@rngui/collection-view] <CollectionView.Host> is not implemented on Android yet — those ' +
+      'rows reserve their height but stay empty, and their children are not mounted at all. ' +
+      'Every other row kind renders. Hosted children arrive with the reparenting work in M8.'
   )
 }
 
@@ -323,8 +331,6 @@ export function Root({
   children,
   ...rest
 }: RootProps) {
-  warnIfAndroid()
-
   /**
    * Heights read off mounted `Host` subtrees, for the rows that did not state one.
    *
@@ -338,6 +344,8 @@ export function Root({
     const registry = createRegistry()
     return { registry, ...serialize(children, registry, measured) }
   }, [children, measured])
+
+  warnIfAndroid(serialized.hosted.length > 0)
 
   /**
    * Files a measurement, and does nothing at all if it has not moved.
