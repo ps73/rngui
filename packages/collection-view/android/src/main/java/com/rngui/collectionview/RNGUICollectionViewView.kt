@@ -295,6 +295,25 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   var keyboardAwareOffset: Int = 0
 
   /**
+   * Answers for the list inside, because that is the view everything else asks about.
+   *
+   * **This is the Android analogue of the iOS `RCTScrollViewComponentView` problem, and the risk
+   * register called it.** `react-native-gesture-handler`'s `NativeViewGestureHandler` decides
+   * whether a view is scrollable by asking it — and what it is attached to here is this
+   * `FrameLayout`, not the `RecyclerView` inside. A `FrameLayout` says no, so the sheet keeps the
+   * whole gesture and the list never receives a touch: no scrolling, and no scroll events either,
+   * which is what the sheet needs to know when to hand the drag back.
+   *
+   * Forwarding costs nothing and makes the wrapper honest. `LockableLayoutManager` still has the
+   * final say, so `scrollEnabled = false` reads as "not scrollable" all the way out — which is the
+   * answer the sheet wants while it owns the drag.
+   */
+  override fun canScrollVertically(direction: Int): Boolean = list.canScrollVertically(direction)
+
+  override fun canScrollHorizontally(direction: Int): Boolean =
+    list.canScrollHorizontally(direction)
+
+  /**
    * Re-runs measure and layout on the next frame, because nothing else will.
    *
    * **React Native lays views out from the shadow tree and ignores requests from below.** A native
