@@ -1,6 +1,7 @@
 package com.rngui.collectionview
 
 import com.rngui.collectionview.generated.RowSpec
+import com.rngui.collectionview.generated.SectionLayout
 import com.rngui.collectionview.generated.SectionSpec
 import com.rngui.collectionview.generated.Tree
 
@@ -60,6 +61,27 @@ sealed class Item {
     override val id get() = "r:${row.id}"
   }
 
+  /**
+   * A whole `chips` section, as one item.
+   *
+   * The horizontally scrolling strip is the one thing compositional layout buys on iOS that has a
+   * genuinely idiomatic Android answer — the Play Store shelf: a nested `RecyclerView` inside a
+   * vertical one, sharing a pool. Modelled as a single item because that is what it *is* to the
+   * outer list; the chips inside it are the inner adapter's business.
+   *
+   * It still consumes every one of its rows' flat indices, because `serialize` concatenates all
+   * rows regardless of layout and `onVisibleRangeChange` indexes against that.
+   */
+  data class ChipStrip(
+    val sectionId: String,
+    val sectionIndex: Int,
+    val rows: List<RowSpec>,
+    val firstRowIndex: Int,
+    val lastRowIndex: Int,
+  ) : Item() {
+    override val id get() = "c:$sectionId"
+  }
+
   /** Where a row sits in its section. A section of one row is [only], not [first]. */
   enum class Position {
     only,
@@ -109,13 +131,28 @@ data class FlattenedTree(
         is Item.Header -> item.sectionIndex
         is Item.Footer -> item.sectionIndex
         is Item.Row -> item.sectionIndex
+        is Item.ChipStrip -> item.sectionIndex
       }
     return headerPositionBySection.getOrElse(sectionIndex) { -1 }
   }
 
-  /** The flat row index at an adapter position, or -1 if that position is not a row. */
+  /** The flat row index at an adapter position, or -1 if that position holds no rows. */
   fun rowIndexAt(adapterPosition: Int): Int =
-    (items.getOrNull(adapterPosition) as? Item.Row)?.rowIndex ?: -1
+    when (val item = items.getOrNull(adapterPosition)) {
+      is Item.Row -> item.rowIndex
+      // A strip covers a span of row indices; which end matters depends on which edge of the
+      // viewport is being asked about.
+      is Item.ChipStrip -> item.firstRowIndex
+      else -> -1
+    }
+
+  /** As [rowIndexAt], but the *last* row a chip strip covers. */
+  fun lastRowIndexAt(adapterPosition: Int): Int =
+    when (val item = items.getOrNull(adapterPosition)) {
+      is Item.Row -> item.rowIndex
+      is Item.ChipStrip -> item.lastRowIndex
+      else -> -1
+    }
 
   // IntArray is an array, so the generated data-class equality would compare identity. Nothing
   // compares two FlattenedTrees today; these exist so that if something starts to, it is right.
@@ -169,6 +206,26 @@ data class FlattenedTree(
             -1
           }
         sections += SectionEntry(section.id, section.indexTitle, items.size)
+
+        // A `chips` section collapses to one item. Its rows still take their flat indices, so
+        // nothing downstream has to know the difference.
+        if (section.layout == SectionLayout.chips) {
+          val first = adapterPositions.size
+          rows.forEach { adapterPositions += items.size }
+          items +=
+            Item.ChipStrip(
+              sectionId = section.id,
+              sectionIndex = sectionIndex,
+              rows = rows,
+              firstRowIndex = first,
+              lastRowIndex = adapterPositions.size - 1,
+            )
+          if (section.footer != null) {
+            items += Item.Footer(section.id, section.footer, sectionIndex)
+          }
+          sectionIndex++
+          continue
+        }
 
         rows.forEachIndexed { index, row ->
           adapterPositions += items.size

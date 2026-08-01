@@ -63,6 +63,7 @@ class CollectionAdapter(
     when (val item = getItem(position)) {
       is Item.Header -> TYPE_HEADER
       is Item.Footer -> TYPE_FOOTER
+      is Item.ChipStrip -> TYPE_CHIPS
       is Item.Row -> TYPE_ROW_BASE + item.row.kind.ordinal
     }
 
@@ -70,6 +71,7 @@ class CollectionAdapter(
     when (viewType) {
       TYPE_HEADER -> LabelHolder(supplementaryView(parent.context, isHeader = true))
       TYPE_FOOTER -> LabelHolder(supplementaryView(parent.context, isHeader = false))
+      TYPE_CHIPS -> ChipHolder(ChipStripView(parent.context, chipPool))
       TYPE_ROW_BASE + RowKind.host.ordinal -> HostHolder(HostContainer(parent.context))
       else ->
         RowHolder(
@@ -83,6 +85,8 @@ class CollectionAdapter(
 
   override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
     when (val item = getItem(position)) {
+      is Item.ChipStrip ->
+        (holder as ChipHolder).strip.bind(item.rows, style, events::onRowPress)
       is Item.Header -> (holder as LabelHolder).bind(item.title, style.headerTextColor)
       is Item.Footer -> (holder as LabelHolder).bind(item.text, style.footerTextColor)
       is Item.Row -> {
@@ -154,6 +158,26 @@ class CollectionAdapter(
 
   class HostHolder(val container: HostContainer) : RecyclerView.ViewHolder(container)
 
+  class ChipHolder(val strip: ChipStripView) : RecyclerView.ViewHolder(strip)
+
+  /**
+   * Shared by every chip strip in the list.
+   *
+   * Ten chip sections then share one set of pooled pills rather than each keeping its own, which
+   * is the entire reason to nest a `RecyclerView` rather than lay out a `HorizontalScrollView`.
+   */
+  private val chipPool = RecyclerView.RecycledViewPool()
+
+  /** The swipe actions for a position, as `(leading, trailing)`. */
+  fun swipeActionsAt(position: Int): Pair<List<com.rngui.collectionview.generated.SwipeActionSpec>, List<com.rngui.collectionview.generated.SwipeActionSpec>> {
+    val row = (itemAtOrNull(position) as? Item.Row)?.row ?: return emptyList<com.rngui.collectionview.generated.SwipeActionSpec>() to emptyList()
+    return row.leadingActions.orEmpty() to row.trailingActions.orEmpty()
+  }
+
+  fun rowIdAt(position: Int): String? = (itemAtOrNull(position) as? Item.Row)?.row?.id
+
+  fun currentStyle(): RowStyle = style
+
   class LabelHolder(private val text: TextView) : RecyclerView.ViewHolder(text) {
     fun bind(value: String?, color: Int) {
       text.text = value.orEmpty()
@@ -164,6 +188,7 @@ class CollectionAdapter(
   private companion object {
     const val TYPE_HEADER = 1
     const val TYPE_FOOTER = 2
+    const val TYPE_CHIPS = 3
 
     /** Row view types are `TYPE_ROW_BASE + RowKind.ordinal`, so they never collide with these. */
     const val TYPE_ROW_BASE = 100

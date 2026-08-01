@@ -2,6 +2,7 @@ package com.rngui.collectionview
 
 import android.content.res.Configuration
 import android.widget.FrameLayout
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.facebook.react.bridge.ReactContext
@@ -173,6 +174,14 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
    */
   private val claimedChildren = mutableListOf<android.view.View>()
 
+  private val swipe =
+    SwipeActionsCallback(
+      actionsAt = adapter::swipeActionsAt,
+      rowIdAt = adapter::rowIdAt,
+      style = adapter::currentStyle,
+      onAction = rowEvents::onSwipeAction,
+    )
+
   private val decoration = GroupDecoration(listStyle())
 
   private val stickyHeaders = StickyHeaderDecoration(flattened, enabled = false)
@@ -199,10 +208,20 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
         dispatch(SectionActionEvent(surfaceId(), id, sectionId))
       }
     )
+    ItemTouchHelper(swipe).attachToRecyclerView(list)
+    // Before the pinned-header listener: an open tray must swallow the tap that closes it, and the
+    // header listener would otherwise claim a touch that lands under a pinned header.
+    list.addOnItemTouchListener(swipe.touchListener())
+    list.addItemDecoration(SwipeTrayDecoration(swipe))
     list.addOnScrollListener(scroll)
     list.addOnScrollListener(
       object : RecyclerView.OnScrollListener() {
-        override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) = reportVisibleRange()
+        override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) {
+          reportVisibleRange()
+          // Scrolling closes an open tray. Leaving it open would leave a row translated off its
+          // card while its actions scrolled away from the fingers aiming at them.
+          if (dy != 0) swipe.close(view)
+        }
       }
     )
     insets.attach()
