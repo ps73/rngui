@@ -2,10 +2,9 @@ package com.rngui.collectionview
 
 import android.content.res.Configuration
 import android.widget.FrameLayout
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.facebook.react.bridge.ReactContext
+import com.facebook.react.uimanager.PixelUtil
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.Event
@@ -28,14 +27,42 @@ import com.rngui.collectionview.generated.Tree
 class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context) {
   private val reactContext: ReactContext = context
 
+  private val layout = LockableLayoutManager(context)
+
   val list =
-    RecyclerView(context).apply {
-      layoutManager = LinearLayoutManager(context)
+    CollectionRecyclerView(context).apply {
+      layoutManager = layout
       // The default animator cross-fades a rebound item, which would turn a theme flip into
       // 2,000 simultaneous 250ms alpha animations. Identity changes still animate — that comes
       // from ListAdapter's diff — but a pure content change should simply redraw.
       (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
     }
+
+  // Explicit types, and `scroll` before `insets`. The two hold lambdas that reach for each other,
+  // which Kotlin cannot infer through ("Type checking has run into a recursive problem") — and
+  // declaring the one whose lambda fires *first* second is what keeps the cycle safe at runtime as
+  // well as resolvable at compile time.
+  private val scroll: ScrollReporter =
+    ScrollReporter(
+      list = list,
+      emit = ::dispatch,
+      surfaceAndTag = { UIManagerHelper.getSurfaceId(reactContext) to id },
+      insets = {
+        ScrollEvent.Insets(
+          top = PixelUtil.toDIPFromPixel(insets.resolvedTop.toFloat()).toDouble(),
+          left = 0.0,
+          bottom = PixelUtil.toDIPFromPixel(insets.resolvedBottom.toFloat()).toDouble(),
+          right = 0.0,
+        )
+      },
+    )
+
+  private val insets: InsetController =
+    InsetController(
+      root = this,
+      list = list,
+      onInsetsChanged = { scroll.reportContentSizeIfChanged() },
+    )
 
   // -- pending props ----------------------------------------------------------------------------
   //
@@ -90,12 +117,99 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   private val decoration = GroupDecoration(listStyle())
 
+  private val stickyHeaders = StickyHeaderDecoration(flattened, enabled = false)
+
+  private val sectionIndex = SectionIndexView(context, list)
+
+  /** `showsSectionIndex`, kept until a tree arrives to build the scrubber from. */
+  var pendingShowsSectionIndex: Boolean = false
+
+  fun setSectionIndexShowsCallout(value: Boolean) {
+    sectionIndex.showsCallout = value
+  }
+
   init {
     addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    // Above the list, so the thumb draws over the rows and receives touches before they do.
+    addView(sectionIndex, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     list.adapter = adapter
     list.addItemDecoration(decoration)
+    list.addItemDecoration(stickyHeaders)
+    list.addOnItemTouchListener(
+      PinnedHeaderTouchListener(stickyHeaders) { sectionId ->
+        dispatch(SectionActionEvent(UIManagerHelper.getSurfaceId(reactContext), id, sectionId))
+      }
+    )
+    list.addOnScrollListener(scroll)
+    insets.attach()
     applyBackground()
   }
+
+  // -- the scroll contract ----------------------------------------------------------------------
+
+  var contentInsetTop: Int
+    get() = insets.top
+    set(value) { insets.top = value; insets.apply() }
+
+  var contentInsetLeft: Int
+    get() = insets.left
+    set(value) { insets.left = value; insets.apply() }
+
+  var contentInsetBottom: Int
+    get() = insets.bottom
+    set(value) { insets.bottom = value; insets.apply() }
+
+  var contentInsetRight: Int
+    get() = insets.right
+    set(value) { insets.right = value; insets.apply() }
+
+  fun setInsetAdjustment(value: InsetAdjustment) {
+    insets.adjustment = value
+    insets.apply()
+  }
+
+  fun setAdjustsForKeyboard(value: Boolean) {
+    insets.adjustsForKeyboard = value
+    insets.apply()
+  }
+
+  fun setTracksScroll(value: Boolean) {
+    scroll.tracksScroll = value
+  }
+
+  fun setScrollEnabled(value: Boolean) {
+    layout.scrollEnabled = value
+  }
+
+  fun setDecelerationRate(value: Float) {
+    list.decelerationRate = value
+  }
+
+  fun setShowsVerticalScrollIndicator(value: Boolean) {
+    list.isVerticalScrollBarEnabled = value
+  }
+
+  fun setKeyboardDismissMode(mode: KeyboardDismissMode) {
+    keyboardDismissMode = mode
+  }
+
+  private var keyboardDismissMode: KeyboardDismissMode = KeyboardDismissMode.onDrag
+
+  /**
+   * `keyboardAware` implies `automaticallyAdjustKeyboardInsets` — it is documented as a superset.
+   *
+   * The other half, scrolling the focused row above the IME, needs a focused row to scroll to and
+   * therefore needs M7's text fields. Setting the inset half now means a form is usable rather
+   * than half-covered in the meantime.
+   */
+  fun setKeyboardAware(value: Boolean) {
+    keyboardAware = value
+    if (value) setAdjustsForKeyboard(true)
+  }
+
+  private var keyboardAware: Boolean = false
+
+  var keyboardAwareOffset: Int = 0
 
   /**
    * Re-runs measure and layout on the next frame, because nothing else will.
@@ -162,6 +276,11 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     // the list so the rows being restyled are the ones that just landed, not the ones they
     // replaced.
     if (schemeChanged || revisionChanged) restyle()
+
+    // Only `plain` pins its headers. A grouped list's header belongs to the card below it and
+    // scrolls away with it, on both platforms.
+    stickyHeaders.update(flattened, enabled = listAppearance == ListAppearance.plain)
+    sectionIndex.update(flattened, listStyle(), pendingShowsSectionIndex)
   }
 
   /**
@@ -237,9 +356,13 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   fun scrollTo(y: Double, animated: Boolean) {
     if (y <= 0.0) {
       list.scrollToPosition(0)
+      scroll.resetOffset(0)
       return
     }
-    val target = context.dp(y) - list.computeVerticalScrollOffset()
+    // Against the *accumulated* offset rather than `computeVerticalScrollOffset()`, for the same
+    // reason the event reports the accumulator: the platform's number is an estimate, and
+    // scrolling by the difference between a target and an estimate lands somewhere neither.
+    val target = context.dp(y) - scroll.offsetPx
     if (animated) list.smoothScrollBy(0, target) else list.scrollBy(0, target)
   }
 }

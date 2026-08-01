@@ -110,6 +110,9 @@ dependencies {
   implementation "com.facebook.react:react-native:+"
 
   implementation "androidx.recyclerview:recyclerview:1.4.0"
+  // WindowInsetsCompat and WindowInsetsAnimationCompat: the keyboard path in M10 needs the
+  // animation callback, which the platform only offers from API 30 and AndroidX back-ports.
+  implementation "androidx.core:core-ktx:1.15.0"
 
   // The BOM keeps the Compose artifacts consistent with each other. It does *not* pin them
   // against the Compose compiler plugin above — that one tracks the app's Kotlin version, and the

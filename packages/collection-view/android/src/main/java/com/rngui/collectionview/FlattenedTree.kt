@@ -75,12 +75,44 @@ sealed class Item {
  * @property rowCount how many [Item.Row]s there are, so an empty list can report `-1, -1`.
  * @property adapterPositionByRowIndex maps a flat row index back to an adapter position, for
  *   scrolling to a row and for M8's host claiming.
+ * @property headerPositionBySection the adapter position of each section's header, or -1 where the
+ *   section has none. M5's sticky header needs "which header is above this row" on every frame,
+ *   and walking backwards through the list to find one is O(section length) — fine for a Settings
+ *   group, ruinous for a 2,000-row Contacts section.
+ * @property sections one entry per surviving section, in order, for the section index.
  */
 data class FlattenedTree(
   val items: List<Item> = emptyList(),
   val rowCount: Int = 0,
   val adapterPositionByRowIndex: IntArray = IntArray(0),
+  val headerPositionBySection: IntArray = IntArray(0),
+  val sections: List<SectionEntry> = emptyList(),
 ) {
+  /**
+   * A section, as the index scrubber and the sticky header see it.
+   *
+   * @property indexTitle the letter this section contributes to the scrubber. A section that sets
+   *   none is skipped rather than given a blank stop, so a list can mix indexed and unindexed
+   *   sections — the same rule iOS follows.
+   */
+  data class SectionEntry(
+    val id: String,
+    val indexTitle: String?,
+    val firstAdapterPosition: Int,
+  )
+
+  /** The adapter position of the header above [adapterPosition], or -1 if there is none. */
+  fun headerPositionAbove(adapterPosition: Int): Int {
+    val item = items.getOrNull(adapterPosition) ?: return -1
+    val sectionIndex =
+      when (item) {
+        is Item.Header -> item.sectionIndex
+        is Item.Footer -> item.sectionIndex
+        is Item.Row -> item.sectionIndex
+      }
+    return headerPositionBySection.getOrElse(sectionIndex) { -1 }
+  }
+
   /** The flat row index at an adapter position, or -1 if that position is not a row. */
   fun rowIndexAt(adapterPosition: Int): Int =
     (items.getOrNull(adapterPosition) as? Item.Row)?.rowIndex ?: -1
@@ -92,7 +124,9 @@ data class FlattenedTree(
       (other is FlattenedTree &&
         items == other.items &&
         rowCount == other.rowCount &&
-        adapterPositionByRowIndex.contentEquals(other.adapterPositionByRowIndex))
+        adapterPositionByRowIndex.contentEquals(other.adapterPositionByRowIndex) &&
+        headerPositionBySection.contentEquals(other.headerPositionBySection) &&
+        sections == other.sections)
 
   override fun hashCode(): Int =
     (items.hashCode() * 31 + rowCount) * 31 + adapterPositionByRowIndex.contentHashCode()
@@ -113,6 +147,8 @@ data class FlattenedTree(
     fun of(tree: Tree): FlattenedTree {
       val items = ArrayList<Item>(tree.sections.sumOf { it.rows.size + 2 })
       val adapterPositions = ArrayList<Int>()
+      val headerPositions = ArrayList<Int>()
+      val sections = ArrayList<SectionEntry>()
       val seenSections = HashSet<String>()
       val seenRows = HashSet<String>()
       var sectionIndex = 0
@@ -125,9 +161,14 @@ data class FlattenedTree(
         // pinned over an empty stretch is how a `plain` list ends up with two headers touching.
         if (rows.isEmpty()) continue
 
-        if (section.header != null) {
-          items += Item.Header(section.id, section.header, section, sectionIndex)
-        }
+        headerPositions +=
+          if (section.header != null) {
+            items += Item.Header(section.id, section.header, section, sectionIndex)
+            items.lastIndex
+          } else {
+            -1
+          }
+        sections += SectionEntry(section.id, section.indexTitle, items.size)
 
         rows.forEachIndexed { index, row ->
           adapterPositions += items.size
@@ -157,6 +198,8 @@ data class FlattenedTree(
         items = items,
         rowCount = adapterPositions.size,
         adapterPositionByRowIndex = adapterPositions.toIntArray(),
+        headerPositionBySection = headerPositions.toIntArray(),
+        sections = sections,
       )
     }
   }

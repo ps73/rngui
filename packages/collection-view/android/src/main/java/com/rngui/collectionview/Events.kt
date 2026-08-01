@@ -36,6 +36,19 @@ class RowPressEvent(surfaceId: Int, viewTag: Int, private val rowId: String) :
   }
 }
 
+/** The one event addressed by *section* rather than by row — a header's trailing button. */
+class SectionActionEvent(surfaceId: Int, viewTag: Int, private val sectionId: String) :
+  Event<SectionActionEvent>(surfaceId, viewTag) {
+  override fun getEventName() = NAME
+
+  override fun getEventData(): WritableMap =
+    Arguments.createMap().apply { putString("sectionId", sectionId) }
+
+  companion object {
+    const val NAME = "topSectionAction"
+  }
+}
+
 /** The visible row range, as inclusive indices into the flattened row list. */
 class VisibleRangeChangeEvent(
   surfaceId: Int,
