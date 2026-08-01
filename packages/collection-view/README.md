@@ -12,9 +12,11 @@ UIKit's. What this package adds is a way to describe them from React.
 npm install @rngui/collection-view
 ```
 
-Requires the New Architecture. **iOS only today** — Android is a stub that accepts every prop and
-renders nothing, so shared screens keep building and running while the `RecyclerView` backend is
-written.
+Requires the New Architecture. **iOS and Android**: a real `UICollectionView` on one, a real
+`RecyclerView` on the other. Each platform gets its own idiom rather than one drawn in the other's
+colours — see [Platform differences](#platform-differences) for where they deliberately diverge, and
+[what does nothing on Android](#documented-no-ops) for the short list of props that are accepted and
+ignored.
 
 ## A first list
 
@@ -263,16 +265,84 @@ A hand-written Fabric component view overrides `mountChildComponentView:` /
 
 ## Android
 
-The view manager accepts the full prop contract and renders nothing, and `Root` withholds hosted
-children there rather than piling them at the origin. In development it warns once, in Metro's
-console, so a blank list is never a mystery.
+A `RecyclerView` with Material 3 grouped cards, not a `FlatList` in a trench coat. The manager
+implements the _generated_ codegen interface rather than declaring its own `@ReactProp` setters, so
+the Kotlin compiler is what keeps it in step with the TypeScript spec — a prop cannot be added on
+one side and forgotten on the other.
 
-It is a `ViewGroupManager` rather than a `SimpleViewManager` deliberately: the iOS component hosts
-arbitrary React children, and a manager whose view is not a group makes the mounting layer throw the
-moment one arrives — which would turn "not implemented yet" into "importing this crashes the app".
+The descriptor model is generated too: `scripts/gen-kotlin-types.mjs` emits `data class`es and
+hand-written `org.json` decoders from the same `src/tree.ts` the Swift model comes from, and both
+platforms decode the _same_ fixture files in their tests. kotlinx.serialization is not used because
+it is a compiler plugin, and React Native app templates — Expo's included — do not put one on the
+root project's classpath.
 
-The manager implements the _generated_ codegen interface rather than declaring its own
-`@ReactProp` setters, so the Kotlin compiler is what keeps it in step with the TypeScript spec.
+`prop → native` in one place:
+
+| Prop                             | Android                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| `listAppearance`                 | grouped cards with first/last/middle corner shapes; `plain` is edge-to-edge                 |
+| `appearance` / `darkAppearance`  | resolved against the configuration; a theme flip rebinds the visible rows with no JS commit |
+| `colorScheme`                    | overrides the device's night mode for this list                                             |
+| `sectionIndex`                   | a fast-scroller thumb with a letter bubble — **not** an A–Z rail                            |
+| `contentInset*`                  | padding with `clipToPadding = false`, so rows scroll _through_ the inset                    |
+| `contentInsetAdjustmentBehavior` | system-bar insets; `never` applies none                                                     |
+| `decelerationRate`               | `0` suppresses the fling exactly; other values approximate through fling velocity           |
+| `scrollTo`                       | `scrollToPosition(0)` for the `(0, 0)` case, which is exact                                 |
+
+### Platform differences
+
+Decisions, not gaps. Each one is the platform's own idiom rather than the other's.
+
+| Concept                     | iOS                                   | Android                                                                                                                                                |
+| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `insetGrouped`              | `UICollectionLayoutListConfiguration` | M3 grouped cards, with a ripple masked to the card's shape                                                                                             |
+| `plain` + pinned headers    | free from compositional layout        | a hand-written `ItemDecoration`, with push-off                                                                                                         |
+| `systemImage`               | SF Symbols                            | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
+| Section index               | an A–Z rail                           | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
+| Swipe actions               | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
+| `datePickerStyle: 'wheels'` | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
+| Overscroll                  | rubber-band bounce                    | stretch or glow                                                                                                                                        |
+| `contentSize.height`        | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
+
+`contentOffset.y` is **exact on both**. On Android it is accumulated from `onScrolled`'s `dy` rather
+than read from `computeVerticalScrollOffset()`, which is an average-item-height estimate that does
+not return exactly zero at the top — and `@gorhom/bottom-sheet` compares it against `0`.
+
+### `materialSymbol`
+
+`systemImage` names an SF Symbol, and the two icon sets overlap in meaning but never in naming, so
+Android carries a curated map. An unmapped name renders nothing and warns once. Set `materialSymbol`
+on an `<Icon>` to name the Android glyph directly; it wins over `systemImage` there and is ignored on
+iOS.
+
+The bundled face is **subset** — the full Material Symbols variable font is 14 MB — so a
+`materialSymbol` outside the subset also renders nothing and warns. Add it to
+`scripts/symbol-map.mjs` and re-run `npm run gen:material-symbols`.
+
+### Documented no-ops
+
+Accepted so shared screens keep type-checking, and deliberately doing nothing:
+
+| Prop                                        | Why                                                                    |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| `sectionIndexRowHeight`                     | sets the per-letter height of an A–Z rail. There is no rail on Android |
+| `automaticallyAdjustsScrollIndicatorInsets` | the indicator is drawn inside the list's padding already               |
+| `keyboardDismissMode: 'interactive'`        | maps to `onDrag`. Android has no interactive dismissal                 |
+| `datePickerStyle: 'inline' \| 'wheels'`     | both fall back to the platform dialog, and warn once                   |
+
+### Not done yet
+
+`@rngui/collection-view/bottom-sheet` does not work on Android: the sheet renders and drags with the
+list inside it, but the list does not scroll and no scroll events reach JavaScript.
+`react-native-gesture-handler` asks the attached view whether it scrolls, and that view is this
+component's wrapper. Forwarding `canScrollVertically` was necessary and not sufficient.
+
+### Host rows
+
+`<CollectionView.Host>` children are mounted into an invisible parking bay and reparented into the
+cell that owns them. A holder releases its child only if it still owns it — during a reload the
+incoming holder binds _before_ the outgoing one is recycled, so an unguarded release blanks a row
+that is on screen and correct.
 
 ## License
 

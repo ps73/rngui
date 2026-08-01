@@ -57,6 +57,8 @@ android {
 
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 24)
+    // Harmless in a published copy, where there are no instrumented tests to run — but stated
+    // here rather than only in the repo so the two builds differ in as few places as possible.
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
@@ -78,6 +80,20 @@ android {
 }
 
 /**
+ * Whether this checkout carries the tests, which a *published* one does not.
+ *
+ * `package.json` excludes `src/test` and `src/androidTest` from the tarball — a consumer compiling
+ * this library has no business compiling its contract tests, and shipping them would make their
+ * build depend on JUnit, androidx.test and Compose. So everything test-shaped below is guarded:
+ * in this repo it is all present and all wired, and in `node_modules` none of it exists and none
+ * of it is declared.
+ *
+ * Found by packing the tarball and unpacking it into a scratch consumer, which is the only way
+ * this class of defect shows up — the iOS dry-run found two, and so did this one.
+ */
+def hasTestSources = file("${projectDir}/src/test").exists()
+
+/**
  * The contract test between `src/tree.ts` and the generated Kotlin model.
  *
  * It reads the *same* fixture files the Swift test reads, straight out of `ios/Tests`, rather
@@ -88,8 +104,10 @@ android {
  * `../ios/Tests` as a resource directory would also package `TreeTypesTests.swift` into the test
  * runtime classpath — harmless, but the kind of surprise that costs somebody an afternoon.
  */
-tasks.withType(Test).configureEach {
-  systemProperty "rngui.fixtureDir", file("${projectDir}/../ios/Tests").absolutePath
+if (hasTestSources) {
+  tasks.withType(Test).configureEach {
+    systemProperty "rngui.fixtureDir", file("${projectDir}/../ios/Tests").absolutePath
+  }
 }
 
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
@@ -123,24 +141,27 @@ dependencies {
   // the class path"). Nothing in `src/main` composes yet: M1 measured the stock row kinds onto
   // hand-built Views, and Compose arrives properly at M7 for the control-bearing kinds. Until
   // then `ui` and `material3` stay on the test classpath, so a consumer's APK does not carry a
-  // toolkit this library is not yet using.
+  // toolkit this library is not yet using. M7 shipped the control-bearing kinds as platform
+  // widgets, so that is still true.
   implementation platform("androidx.compose:compose-bom:2025.06.01")
   implementation "androidx.compose.runtime:runtime"
 
-  testImplementation "junit:junit:4.13.2"
-  // The generated decoders use `org.json`, which is part of the platform on a device but is a
-  // signature-only stub in the `android.jar` unit tests compile against — every method throws
-  // "not mocked". This is the real implementation, on the test classpath only, so it never
-  // reaches the AAR and never duplicates the platform's copy at runtime.
-  testImplementation "org.json:json:20250517"
+  if (hasTestSources) {
+    testImplementation "junit:junit:4.13.2"
+    // The generated decoders use `org.json`, which is part of the platform on a device but is a
+    // signature-only stub in the `android.jar` unit tests compile against — every method throws
+    // "not mocked". This is the real implementation, on the test classpath only, so it never
+    // reaches the AAR and never duplicates the platform's copy at runtime.
+    testImplementation "org.json:json:20250517"
 
-  // The M1 row-backend spike. Instrumented rather than local, because the question it answers is
-  // about frame times and there is no such thing as a frame on the JVM.
-  androidTestImplementation "androidx.test:runner:1.6.2"
-  androidTestImplementation "androidx.test:rules:1.6.1"
-  androidTestImplementation "androidx.test.ext:junit:1.2.1"
-  androidTestImplementation "androidx.activity:activity:1.9.3"
-  androidTestImplementation platform("androidx.compose:compose-bom:2025.06.01")
-  androidTestImplementation "androidx.compose.ui:ui"
-  androidTestImplementation "androidx.compose.material3:material3"
+    // The instrumented spikes and regression tests. Instrumented rather than local because what
+    // they measure — frame times, recycling, hosted-view ownership — does not exist on the JVM.
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test:rules:1.6.1"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.activity:activity:1.9.3"
+    androidTestImplementation platform("androidx.compose:compose-bom:2025.06.01")
+    androidTestImplementation "androidx.compose.ui:ui"
+    androidTestImplementation "androidx.compose.material3:material3"
+  }
 }

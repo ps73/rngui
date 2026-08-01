@@ -58,6 +58,8 @@
     "react-native.config.js",
     "!**/__tests__",
     "!ios/Tests",
+    "!android/src/androidTest",
+    "!android/src/test",
     "!**/.*"
   ],
   "scripts": {

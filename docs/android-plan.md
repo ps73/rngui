@@ -11,6 +11,46 @@ on, and it settles them by measurement rather than by argument.
 
 ---
 
+## Status
+
+Eleven of twelve milestones are done and verified on a Pixel 10 emulator (API 37). What remains is
+listed honestly rather than rounded up.
+
+| Milestone                         | State                                                              |
+| --------------------------------- | ------------------------------------------------------------------ |
+| M1 Foundations + decisions        | Done. Both settled by measurement; results below                   |
+| M2 Generated Kotlin model         | Done. Shares its fixture with the Swift test                       |
+| M3 Scroll shell + first rows      | Done                                                               |
+| M4 Grouping, shape, separators    | Done. Ripple clipping verified by pixel measurement                |
+| M5 Sticky headers + scrubber      | Done                                                               |
+| M6 Typography + icons             | Done. Ink-coverage instrument passes                               |
+| M7 Controls                       | Done. Recycling emits zero spurious events, proven by mutation     |
+| M8 Host rows                      | Done. Ownership guard proven by mutation                           |
+| M9 Chips + swipe actions          | Done                                                               |
+| M10 Insets, keyboard, scroll      | Done, except the focus-following half of `keyboardAware`           |
+| M11 Bottom sheet                  | **Partial.** Renders and drags; the list does not scroll inside it |
+| M12 Example parity, docs, release | Docs and the publish dry-run done; device matrix not run           |
+
+**M11 is the one that is not working.** `react-native-gesture-handler` asks the attached view
+whether it scrolls, and the attached view is this component's `FrameLayout` wrapper rather than the
+`RecyclerView` inside it. Forwarding `canScrollVertically` was necessary and not sufficient; the
+next step is to find out whether the touch reaches the list at all, and if not, whether the
+fallback the risk register prescribes — `scrollEnabled` from `animatedScrollableStatus`, which the
+shared bottom-sheet entry point already implements — is reaching native. The jank-frame instrument
+is not built, because it would measure a gesture that does not yet work.
+
+**Not done in M12:** the device matrix (one API 24 device, one API 31, one current, one low-RAM).
+Only a single emulator was available, so "it works on a Pixel 10 emulator" is the whole of the
+claim. The Settings and Contacts screens are also still ports of their iOS originals rather than
+Android-native rebuilds — the strongest forcing function for Expressive fidelity in the plan, and
+untouched.
+
+Three plan assumptions did not survive contact and are corrected in place below: Compose needs a
+compiler plugin the app does not provide, the Material Symbols font is 14 MB rather than something
+to bundle whole, and `RowBackendSpike` could not settle Decision 1 on available hardware.
+
+---
+
 ## Where we are
 
 `android/src/main/java/com/rngui/collectionview/` holds three files: a `ViewGroupManager` that
