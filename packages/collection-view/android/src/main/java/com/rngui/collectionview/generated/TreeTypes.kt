@@ -358,6 +358,19 @@ data class RowSpec(
    */
   val systemImage: String? = null,
   /**
+   * An explicit Material Symbol name, for Android.
+   *
+   * The one deliberate platform-specific field in this file, and the escape hatch for the fact
+   * that `systemImage` cannot be mapped completely: SF Symbols and Material Symbols overlap in
+   * meaning but never in naming, so native carries a curated map and an unmapped name renders
+   * nothing. Setting this names the Android glyph directly, and wins over `systemImage` where both
+   * are set — an escape hatch that loses to the thing it overrides is not one.
+   *
+   * Ignored on iOS. Additive, so it is safe under rule 2 above: a binary that predates it simply
+   * does not read the key.
+   */
+  val materialSymbol: String? = null,
+  /**
    * Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing.
    */
   val imageColor: String? = null,
@@ -482,6 +495,7 @@ data class RowSpec(
         value = json.string("value"),
         accessory = json.string("accessory")?.let(AccessoryKind::from),
         systemImage = json.string("systemImage"),
+        materialSymbol = json.string("materialSymbol"),
         imageColor = json.string("imageColor"),
         imageBackground = json.string("imageBackground"),
         imageSize = json.double("imageSize"),

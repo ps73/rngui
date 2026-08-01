@@ -20,6 +20,7 @@
           "value": "Tree.sections[0].rows[0].value",
           "accessory": "spinner",
           "systemImage": "Tree.sections[0].rows[0].systemImage",
+          "materialSymbol": "Tree.sections[0].rows[0].materialSymbol",
           "imageColor": "Tree.sections[0].rows[0].imageColor",
           "imageBackground": "Tree.sections[0].rows[0].imageBackground",
           "imageSize": 11,

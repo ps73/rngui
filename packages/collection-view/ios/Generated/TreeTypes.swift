@@ -291,6 +291,17 @@ struct RowSpec: Decodable, Equatable {
   /// A symbol name rather than an image source: these are glyphs from the system set, they scale
   /// with Dynamic Type for free, and they take the row's tint without an asset pipeline.
   var systemImage: String?
+  /// An explicit Material Symbol name, for Android.
+  ///
+  /// The one deliberate platform-specific field in this file, and the escape hatch for the fact
+  /// that `systemImage` cannot be mapped completely: SF Symbols and Material Symbols overlap in
+  /// meaning but never in naming, so native carries a curated map and an unmapped name renders
+  /// nothing. Setting this names the Android glyph directly, and wins over `systemImage` where both
+  /// are set — an escape hatch that loses to the thing it overrides is not one.
+  ///
+  /// Ignored on iOS. Additive, so it is safe under rule 2 above: a binary that predates it simply
+  /// does not read the key.
+  var materialSymbol: String?
   /// Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing.
   var imageColor: String?
   /// Fills a rounded tile behind the glyph and draws the glyph white — Settings' coloured squares.
@@ -369,7 +380,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, imageColor, imageBackground, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -384,6 +395,7 @@ struct RowSpec: Decodable, Equatable {
     value = try container.decodeIfPresent(String.self, forKey: .value)
     accessory = try container.decodeIfPresent(AccessoryKind.self, forKey: .accessory)
     systemImage = try container.decodeIfPresent(String.self, forKey: .systemImage)
+    materialSymbol = try container.decodeIfPresent(String.self, forKey: .materialSymbol)
     imageColor = try container.decodeIfPresent(String.self, forKey: .imageColor)
     imageBackground = try container.decodeIfPresent(String.self, forKey: .imageBackground)
     imageSize = try container.decodeIfPresent(Double.self, forKey: .imageSize)

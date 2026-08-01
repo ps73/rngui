@@ -157,6 +157,15 @@ export const Checkmark = tagged<Record<string, never>>(
 export interface IconProps {
   /** SF Symbol name, e.g. `calendar` or `clock`. */
   systemImage: string
+  /**
+   * The Android glyph, named directly.
+   *
+   * Android renders Material Symbols, and native carries a curated SF-to-Material map — but the
+   * two sets overlap in meaning and never in naming, so the map cannot be complete. Set this when
+   * the symbol you want is not covered, or when the mapped one is not the one you meant. Wins over
+   * `systemImage` on Android; ignored on iOS.
+   */
+  materialSymbol?: string
   /** Overrides the glyph colour. Defaults to the row's tint. */
   color?: string
   /**

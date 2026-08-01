@@ -40,6 +40,7 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.sections[0].rows[0].value, "Tree.sections[0].rows[0].value")
     XCTAssertEqual(decoded.sections[0].rows[0].accessory, .spinner)
     XCTAssertEqual(decoded.sections[0].rows[0].systemImage, "Tree.sections[0].rows[0].systemImage")
+    XCTAssertEqual(decoded.sections[0].rows[0].materialSymbol, "Tree.sections[0].rows[0].materialSymbol")
     XCTAssertEqual(decoded.sections[0].rows[0].imageColor, "Tree.sections[0].rows[0].imageColor")
     XCTAssertEqual(decoded.sections[0].rows[0].imageBackground, "Tree.sections[0].rows[0].imageBackground")
     XCTAssertEqual(decoded.sections[0].rows[0].imageSize, 11)

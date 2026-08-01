@@ -275,9 +275,10 @@ function serializeRow(
 
   const icon = findByTag(children, 'icon')
   if (icon != null) {
-    const { systemImage, color, background, size } =
+    const { systemImage, materialSymbol, color, background, size } =
       icon.props as unknown as IconProps
     row.systemImage = systemImage
+    if (materialSymbol != null) row.materialSymbol = materialSymbol
     const resolved = resolveColor(color)
     if (resolved != null) row.imageColor = resolved
     const resolvedBackground = resolveColor(background)

@@ -8,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import com.rngui.collectionview.generated.FontSpec
 import com.rngui.collectionview.generated.RowKind
 import com.rngui.collectionview.generated.RowSpec
 
@@ -78,14 +79,28 @@ class RowView(context: Context) : LinearLayout(context) {
       maxLines = 1
     }
 
+  private val iconView =
+    IconView(context).apply {
+      visibility = View.GONE
+      layoutParams = LayoutParams(WRAP, WRAP).apply { marginEnd = context.dp(12) }
+    }
+
+  private val badgeView =
+    BadgeView(context).apply {
+      visibility = View.GONE
+      layoutParams = LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(8) }
+    }
+
   init {
     orientation = HORIZONTAL
     gravity = Gravity.CENTER_VERTICAL
     minimumHeight = context.dp(44)
     setPadding(context.dp(16), context.dp(11), context.dp(16), context.dp(11))
     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, WRAP)
+    addView(iconView)
     addView(textColumn)
     addView(valueView)
+    addView(badgeView)
   }
 
   /**
@@ -98,13 +113,20 @@ class RowView(context: Context) : LinearLayout(context) {
    * rather than a recycling one. So every branch below has an `else`.
    */
   fun bind(row: RowSpec, style: RowStyle) {
+    iconView.bind(row, style)
+    badgeView.bind(row.badge, parseRnguiHex(row.badgeColor))
+
     labelView.text = row.label.orEmpty()
     labelView.setTextColor(if (row.disabled == true) style.disabledColor else style.labelColor)
-    labelView.typeface = style.labelTypeface
+    // Per-row `font` falls back to the list's field by field, which is what `RowSpec.font`
+    // documents — Reminders' title is set noticeably bigger than the notes under it, and that is a
+    // property of the row rather than of the list.
+    FontResolver.apply(labelView, row.font ?: style.font, LABEL_SIZE_SP, context)
 
     val secondary = if (row.kind == RowKind.subtitle) row.secondaryLabel else null
     secondaryView.visibility = if (secondary != null) View.VISIBLE else View.GONE
     secondaryView.text = secondary.orEmpty()
+    FontResolver.apply(secondaryView, style.font, SECONDARY_SIZE_SP, context)
     secondaryView.setTextColor(
       when {
         row.disabled == true -> style.disabledColor
@@ -118,6 +140,7 @@ class RowView(context: Context) : LinearLayout(context) {
     val value = if (row.kind == RowKind.value) row.value else null
     valueView.visibility = if (value != null) View.VISIBLE else View.GONE
     valueView.text = value.orEmpty()
+    FontResolver.apply(valueView, row.font ?: style.font, LABEL_SIZE_SP, context)
     valueView.setTextColor(
       if (row.disabled == true) style.disabledColor else style.secondaryColor
     )
@@ -129,6 +152,8 @@ class RowView(context: Context) : LinearLayout(context) {
 
   private companion object {
     const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
+    const val LABEL_SIZE_SP = 17f
+    const val SECONDARY_SIZE_SP = 15f
 
     /**
      * Applied on top of the greyed text colours rather than instead of them.
@@ -157,6 +182,10 @@ data class RowStyle(
   val headerTextColor: Int,
   val footerTextColor: Int,
   val labelTypeface: Typeface?,
+  /** The list's default font. A row's own `font` falls back to this field by field. */
+  val font: FontSpec?,
+  val headerFont: FontSpec?,
+  val footerFont: FontSpec?,
 ) {
   companion object {
     fun of(resolver: AppearanceResolver): RowStyle {
@@ -178,9 +207,10 @@ data class RowStyle(
           resolver.color({ it.separator }, if (dark) SEPARATOR_DARK else SEPARATOR_LIGHT),
         headerTextColor = resolver.color({ it.headerTextColor }, secondary),
         footerTextColor = resolver.color({ it.footerTextColor }, secondary),
-        // M6 resolves `FontSpec` properly, through ReactFontManager. Until then a row uses the
-        // platform face, which is what an unset `font` means anyway.
         labelTypeface = null,
+        font = resolver.font { it.font },
+        headerFont = resolver.font { it.headerFont } ?: resolver.font { it.font },
+        footerFont = resolver.font { it.footerFont } ?: resolver.font { it.font },
       )
     }
 

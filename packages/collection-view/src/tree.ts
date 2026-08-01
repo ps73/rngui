@@ -164,6 +164,19 @@ export interface RowSpec {
    * with Dynamic Type for free, and they take the row's tint without an asset pipeline.
    */
   systemImage?: string
+  /**
+   * An explicit Material Symbol name, for Android.
+   *
+   * The one deliberate platform-specific field in this file, and the escape hatch for the fact
+   * that `systemImage` cannot be mapped completely: SF Symbols and Material Symbols overlap in
+   * meaning but never in naming, so native carries a curated map and an unmapped name renders
+   * nothing. Setting this names the Android glyph directly, and wins over `systemImage` where both
+   * are set — an escape hatch that loses to the thing it overrides is not one.
+   *
+   * Ignored on iOS. Additive, so it is safe under rule 2 above: a binary that predates it simply
+   * does not read the key.
+   */
+  materialSymbol?: string
   /** Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing. */
   imageColor?: string
   /**
