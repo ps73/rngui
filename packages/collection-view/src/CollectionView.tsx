@@ -256,43 +256,7 @@ let nextRevision = 1
  */
 const GROUPED_CARD_MARGIN = 16
 
-/**
- * Android renders, but does not host React children yet.
- *
- * Warned about here rather than logged from Kotlin, because the person who needs to read it is
- * writing JavaScript — and because Metro surfaces this in the same console as everything else,
- * while `Log.w` needs logcat. Once per process: this is a property of the platform, not of a
- * particular list, so one warning per mounted `Root` would be noise.
- */
-let warnedAboutAndroid = false
-
-/**
- * Whether this platform can place a hosted React child inside a cell.
- *
- * Written as "is iOS" rather than "is not Android" on purpose: hosting is a capability that has to
- * be built per platform, so a platform this library has never heard of should inherit "no", not
- * "yes".
- */
-const HOSTS_CHILDREN = Platform.OS === 'ios'
-
-function warnIfAndroid(hasHostedChildren: boolean) {
-  // Only worth saying when the screen actually has a `Host` row. A list of stock rows renders on
-  // Android now, and warning about a capability it is not using would be noise of exactly the kind
-  // people learn to scroll past.
-  if (
-    !__DEV__ ||
-    Platform.OS !== 'android' ||
-    warnedAboutAndroid ||
-    !hasHostedChildren
-  )
-    return
-  warnedAboutAndroid = true
-  console.warn(
-    '[@rngui/collection-view] <CollectionView.Host> is not implemented on Android yet — those ' +
-      'rows reserve their height but stay empty, and their children are not mounted at all. ' +
-      'Every other row kind renders. Hosted children arrive with the reparenting work in M8.'
-  )
-}
+const HOSTS_CHILDREN = Platform.OS === 'ios' || Platform.OS === 'android'
 
 /**
  * A real `UICollectionView`.
@@ -344,8 +308,6 @@ export function Root({
     const registry = createRegistry()
     return { registry, ...serialize(children, registry, measured) }
   }, [children, measured])
-
-  warnIfAndroid(serialized.hosted.length > 0)
 
   /**
    * Files a measurement, and does nothing at all if it has not moved.
@@ -571,9 +533,9 @@ export function Root({
         {...handlers}
       >
         {/*
-          Only iOS mounts hosted children, and the omission elsewhere is deliberate rather than a
-          guard against a crash. Every host wrapper is positioned absolutely with no `top`, because
-          on iOS the cell that claims it supplies the vertical position; with no cells to claim
+          Withheld on platforms that cannot claim them, and the omission is deliberate rather than
+          a guard against a crash. Every host wrapper is positioned absolutely with no `top`, because
+          the cell that claims it supplies the vertical position; with no cells to claim
           them they would all pile up at the origin, which reads as a broken implementation rather
           than an unimplemented one. Withheld here rather than hidden natively so the subtree is
           never mounted at all — no effects, no timers, no work for content nobody can see.

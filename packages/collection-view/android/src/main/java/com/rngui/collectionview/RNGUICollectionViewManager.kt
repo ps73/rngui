@@ -2,6 +2,7 @@ package com.rngui.collectionview
 
 import com.facebook.react.common.MapBuilder
 import com.facebook.react.module.annotations.ReactModule
+import android.view.View
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.ViewGroupManager
 import com.facebook.react.uimanager.ViewManagerDelegate
@@ -30,6 +31,40 @@ class RNGUICollectionViewManager :
 
   override fun createViewInstance(reactContext: ThemedReactContext): RNGUICollectionViewView =
     RNGUICollectionViewView(reactContext)
+
+  // -----------------------------------------------------------------------------------------
+  // Hosted children
+  //
+  // React's children here are *only* the hosted subtrees. Everything else in the view — the
+  // RecyclerView, the parking bay, the scrubber — is ours, so every one of these has to route to
+  // the bay rather than to the FrameLayout. Leaving them at the default would have React counting
+  // our views among its own, and `hostIndex` would address the wrong thing.
+  // -----------------------------------------------------------------------------------------
+
+  /**
+   * The Android analogue of overriding `mountChildComponentView:` on iOS.
+   *
+   * Without it Fabric positions hosted children itself, straight from the Yoga result, and they
+   * pile up at the origin — every hosted row drawn on top of every other, at the top of the list.
+   */
+  override fun needsCustomLayoutForChildren(): Boolean = true
+
+  override fun addView(parent: RNGUICollectionViewView, child: View, index: Int) {
+    parent.addHostChild(child, index)
+  }
+
+  override fun getChildCount(parent: RNGUICollectionViewView): Int = parent.hostChildCount
+
+  override fun getChildAt(parent: RNGUICollectionViewView, index: Int): View? =
+    parent.hostChildAt(index)
+
+  override fun removeViewAt(parent: RNGUICollectionViewView, index: Int) {
+    parent.removeHostChildAt(index)
+  }
+
+  override fun removeAllViews(parent: RNGUICollectionViewView) {
+    parent.removeAllHostChildren()
+  }
 
   // ---------------------------------------------------------------------------------------------
   // Props
@@ -242,7 +277,9 @@ class RNGUICollectionViewManager :
   override fun setTracksVisibleRange(
     view: RNGUICollectionViewView,
     value: Boolean,
-  ) = Unit
+  ) {
+    view.tracksVisibleRange = value
+  }
 
   /**
    * A command rather than a prop, because the caller is reanimated rather than React.

@@ -11,6 +11,7 @@ import com.rngui.collectionview.CollectionAdapter
 import com.rngui.collectionview.FlattenedTree
 import com.rngui.collectionview.Item
 import com.rngui.collectionview.ListStyle
+import com.rngui.collectionview.ParkingView
 import com.rngui.collectionview.RowEvents
 import com.rngui.collectionview.RowStyle
 import com.rngui.collectionview.AppearanceResolver
@@ -78,7 +79,11 @@ class RecycleQuietTest {
       val listStyle =
         ListStyle.of(activity, resolver, rowStyle, ListAppearance.insetGrouped)
 
-      val adapter = CollectionAdapter(rowStyle, listStyle, events)
+      // No host rows in this fixture, so the parking bay is never read — but the adapter needs
+      // one, and handing it a real (empty) bay is more honest than a stub that would hide a
+      // regression if this fixture ever grew a host row.
+      val adapter =
+        CollectionAdapter(rowStyle, listStyle, events, ParkingView(activity), hostChildAt = { null })
       adapter.submitList(FlattenedTree.of(tree()).items)
 
       list =

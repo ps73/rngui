@@ -28,6 +28,10 @@ class CollectionAdapter(
   private var style: RowStyle,
   private var listStyle: ListStyle,
   private val events: RowEvents,
+  /** Where hosted React children live while no holder is showing them. */
+  private val parking: ParkingView,
+  /** The mounted React children, in mount order — which is what `hostIndex` indexes into. */
+  private val hostChildAt: (Int) -> View?,
 ) : ListAdapter<Item, RecyclerView.ViewHolder>(DIFF) {
 
   /**
@@ -66,6 +70,7 @@ class CollectionAdapter(
     when (viewType) {
       TYPE_HEADER -> LabelHolder(supplementaryView(parent.context, isHeader = true))
       TYPE_FOOTER -> LabelHolder(supplementaryView(parent.context, isHeader = false))
+      TYPE_ROW_BASE + RowKind.host.ordinal -> HostHolder(HostContainer(parent.context))
       else ->
         RowHolder(
           RowView(
@@ -81,6 +86,10 @@ class CollectionAdapter(
       is Item.Header -> (holder as LabelHolder).bind(item.title, style.headerTextColor)
       is Item.Footer -> (holder as LabelHolder).bind(item.text, style.footerTextColor)
       is Item.Row -> {
+        if (holder is HostHolder) {
+          bindHost(holder, item)
+          return
+        }
         val view = (holder as RowHolder).view
         view.bind(item.row, style)
         // Rebuilt per bind rather than cached per position: the shape depends on where the row
@@ -110,7 +119,40 @@ class CollectionAdapter(
     }
   }
 
+  /**
+   * Claims the hosted child for this row, and reserves the height JavaScript stated.
+   *
+   * `height` is never measured here. Fabric lays the subtree out with Yoga, so the view has no
+   * intrinsic size and an "estimated" cell would measure it as zero — either the caller stated a
+   * height or `Root` read it off the mounted subtree with `onLayout` and sent it back through the
+   * tree.
+   */
+  private fun bindHost(holder: HostHolder, item: Item.Row) {
+    val container = holder.container
+    container.layoutParams =
+      (container.layoutParams ?: RecyclerView.LayoutParams(MATCH, WRAP)).apply {
+        width = MATCH
+        height =
+          item.row.height?.let { container.context.dp(it) } ?: WRAP
+      }
+
+    val child = item.row.hostIndex?.let(hostChildAt)
+    if (child == null) {
+      container.release(parking)
+      return
+    }
+    container.claim(child, parking)
+  }
+
+  override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+    super.onViewRecycled(holder)
+    // The ownership guard lives inside `release`; see HostContainer for why it has to.
+    (holder as? HostHolder)?.container?.release(parking)
+  }
+
   class RowHolder(val view: RowView) : RecyclerView.ViewHolder(view)
+
+  class HostHolder(val container: HostContainer) : RecyclerView.ViewHolder(container)
 
   class LabelHolder(private val text: TextView) : RecyclerView.ViewHolder(text) {
     fun bind(value: String?, color: Int) {
@@ -125,6 +167,9 @@ class CollectionAdapter(
 
     /** Row view types are `TYPE_ROW_BASE + RowKind.ordinal`, so they never collide with these. */
     const val TYPE_ROW_BASE = 100
+
+    const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+    const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
 
     /**
      * A section header or footer.

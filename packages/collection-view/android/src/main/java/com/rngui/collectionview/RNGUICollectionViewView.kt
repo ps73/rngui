@@ -2,6 +2,7 @@ package com.rngui.collectionview
 
 import android.content.res.Configuration
 import android.widget.FrameLayout
+import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PixelUtil
@@ -142,7 +143,35 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
         dispatch(RowValueEvent.string(surfaceId(), id, RowValueEvent.SWIPE, rowId, actionId))
     }
 
-  private val adapter = CollectionAdapter(rowStyle(), listStyle(), rowEvents)
+  /**
+   * Where React mounts hosted children.
+   *
+   * Every `<CollectionView.Host>` child arrives here through the manager's `addView`, and a holder
+   * borrows the one it needs while its row is on screen. React owns their lifetime throughout;
+   * this only owns *where they sit* when nothing is showing them.
+   */
+  private val parking = ParkingView(context)
+
+  private val adapter =
+    CollectionAdapter(
+      rowStyle(),
+      listStyle(),
+      rowEvents,
+      parking,
+      // `claimedChildren`, never `parking.getChildAt` — see the note on that list. Reading the
+      // bay's own child order renumbers everything after the first claimed child, so the rows on
+      // screen borrow the wrong subtrees and the ones being windowed in come up empty.
+      hostChildAt = { index -> claimedChildren.getOrNull(index) },
+    )
+
+  /**
+   * Every hosted child in mount order, whether parked or currently claimed.
+   *
+   * `hostIndex` indexes into *mount order*, and a child that a holder has borrowed is no longer a
+   * child of the parking bay — so reading the bay alone would renumber every child after the first
+   * one on screen. This list is the stable order; the bay is only where the unclaimed ones sit.
+   */
+  private val claimedChildren = mutableListOf<android.view.View>()
 
   private val decoration = GroupDecoration(listStyle())
 
@@ -158,6 +187,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   }
 
   init {
+    addView(parking, LayoutParams(0, 0))
     addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     // Above the list, so the thumb draws over the rows and receives touches before they do.
     addView(sectionIndex, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -170,6 +200,11 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       }
     )
     list.addOnScrollListener(scroll)
+    list.addOnScrollListener(
+      object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) = reportVisibleRange()
+      }
+    )
     insets.attach()
     applyBackground()
   }
@@ -306,6 +341,8 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     // replaced.
     if (schemeChanged || revisionChanged) restyle()
 
+    reportVisibleRange()
+
     // Only `plain` pins its headers. A grouped list's header belongs to the card below it and
     // scrolls away with it, on both platforms.
     stickyHeaders.update(flattened, enabled = listAppearance == ListAppearance.plain)
@@ -366,6 +403,83 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     )
 
   private fun surfaceId(): Int = UIManagerHelper.getSurfaceId(reactContext)
+
+  // -- hosted children --------------------------------------------------------------------------
+  //
+  // React's view of this component's children is *only* the hosted subtrees. The list, the parking
+  // bay and the scrubber are ours, and the manager's overrides below keep the two numbering
+  // schemes apart — an off-by-one here puts a React child where the RecyclerView should be.
+
+  fun addHostChild(child: android.view.View, index: Int) {
+    claimedChildren.add(index.coerceIn(0, claimedChildren.size), child)
+    parking.addView(child)
+  }
+
+  fun removeHostChildAt(index: Int) {
+    val child = claimedChildren.getOrNull(index) ?: return
+    claimedChildren.removeAt(index)
+    (child.parent as? android.view.ViewGroup)?.removeView(child)
+  }
+
+  fun removeAllHostChildren() {
+    claimedChildren.forEach { (it.parent as? android.view.ViewGroup)?.removeView(it) }
+    claimedChildren.clear()
+  }
+
+  val hostChildCount: Int
+    get() = claimedChildren.size
+
+  fun hostChildAt(index: Int): android.view.View? = claimedChildren.getOrNull(index)
+
+  // -- visible range ----------------------------------------------------------------------------
+
+  var tracksVisibleRange: Boolean = false
+
+  private var lastRange = -1 to -1
+
+  /**
+   * Reports the visible **row** range, as indices into the flattened row list.
+   *
+   * The one escape hatch for the thing that cannot recycle: a long list of hosted rows has to be
+   * windowed in JavaScript, rendering children only for the rows in view plus overscan. Reported
+   * from `findFirst/LastVisibleItemPosition` and mapped through the flattened index, because an
+   * adapter position counts headers and a row index does not.
+   */
+  private fun reportVisibleRange() {
+    if (!tracksVisibleRange) return
+    val manager = layout
+    val first = manager.findFirstVisibleItemPosition()
+    val last = manager.findLastVisibleItemPosition()
+
+    val range =
+      if (first == RecyclerView.NO_POSITION || flattened.rowCount == 0) {
+        -1 to -1
+      } else {
+        // Scanned outward rather than taken directly: the first visible *item* may be a header,
+        // which has no row index at all.
+        var firstRow = -1
+        for (position in first..last) {
+          val index = flattened.rowIndexAt(position)
+          if (index >= 0) {
+            firstRow = index
+            break
+          }
+        }
+        var lastRow = -1
+        for (position in last downTo first) {
+          val index = flattened.rowIndexAt(position)
+          if (index >= 0) {
+            lastRow = index
+            break
+          }
+        }
+        firstRow to lastRow
+      }
+
+    if (range == lastRange) return
+    lastRange = range
+    dispatch(VisibleRangeChangeEvent(surfaceId(), id, range.first, range.second))
+  }
 
   private fun dispatch(event: Event<*>) {
     UIManagerHelper.getEventDispatcherForReactTag(reactContext, id)?.dispatchEvent(event)
