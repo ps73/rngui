@@ -36,6 +36,65 @@ class RowPressEvent(surfaceId: Int, viewTag: Int, private val rowId: String) :
   }
 }
 
+/**
+ * A row event carrying a single named value.
+ *
+ * One class for `onSwitchChange`, `onTextChange`, `onFocusChange`, `onDateChange`, `onMenuSelect`
+ * and `onSwipeAction`, because they differ only in the *name* of the event and the *type* of the
+ * second field — and the dispatcher routes on the name, not on the class.
+ */
+class RowValueEvent
+private constructor(
+  surfaceId: Int,
+  viewTag: Int,
+  private val name: String,
+  private val rowId: String,
+  private val write: (WritableMap) -> Unit,
+) : Event<RowValueEvent>(surfaceId, viewTag) {
+  override fun getEventName() = name
+
+  override fun getEventData(): WritableMap =
+    Arguments.createMap().apply {
+      putString("rowId", rowId)
+      write(this)
+    }
+
+  companion object {
+    const val SWITCH = "topSwitchChange"
+    const val TEXT = "topTextChange"
+    const val FOCUS = "topFocusChange"
+    const val DATE = "topDateChange"
+    const val MENU = "topMenuSelect"
+    const val SWIPE = "topSwipeAction"
+
+    fun bool(surfaceId: Int, tag: Int, name: String, rowId: String, value: Boolean) =
+      RowValueEvent(surfaceId, tag, name, rowId) { it.putBoolean(KEY_BY_NAME.getValue(name), value) }
+
+    fun string(surfaceId: Int, tag: Int, name: String, rowId: String, value: String) =
+      RowValueEvent(surfaceId, tag, name, rowId) { it.putString(KEY_BY_NAME.getValue(name), value) }
+
+    fun number(surfaceId: Int, tag: Int, name: String, rowId: String, value: Double) =
+      RowValueEvent(surfaceId, tag, name, rowId) { it.putDouble(KEY_BY_NAME.getValue(name), value) }
+
+    /**
+     * The payload key each event uses for its value.
+     *
+     * Not all `value`: the spec names them individually — `focused`, `millis`, `itemId`,
+     * `actionId` — and JavaScript destructures those names. A single "value" key would be tidier
+     * here and wrong at every call site.
+     */
+    private val KEY_BY_NAME =
+      mapOf(
+        SWITCH to "value",
+        TEXT to "value",
+        FOCUS to "focused",
+        DATE to "millis",
+        MENU to "itemId",
+        SWIPE to "actionId",
+      )
+  }
+}
+
 /** The one event addressed by *section* rather than by row — a header's trailing button. */
 class SectionActionEvent(surfaceId: Int, viewTag: Int, private val sectionId: String) :
   Event<SectionActionEvent>(surfaceId, viewTag) {

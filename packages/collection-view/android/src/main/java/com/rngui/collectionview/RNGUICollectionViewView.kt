@@ -112,8 +112,37 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   // it before it was assigned and hand a null to a non-null parameter. Which is exactly what the
   // first version of this file did, and it crashed on mount rather than at compile time — the
   // platform declaration is `@NonNull`, so the check is a runtime one.
-  private val adapter =
-    CollectionAdapter(rowStyle(), listStyle(), onRowPress = ::emitRowPress)
+  /**
+   * Every row event, dispatched straight to the event dispatcher.
+   *
+   * One object for the whole list rather than a set of lambdas per row: a 2,000-row list allocates
+   * this once.
+   */
+  private val rowEvents =
+    object : RowEvents {
+      override fun onRowPress(rowId: String) =
+        dispatch(RowPressEvent(surfaceId(), id, rowId))
+
+      override fun onSwitchChange(rowId: String, value: Boolean) =
+        dispatch(RowValueEvent.bool(surfaceId(), id, RowValueEvent.SWITCH, rowId, value))
+
+      override fun onTextChange(rowId: String, value: String) =
+        dispatch(RowValueEvent.string(surfaceId(), id, RowValueEvent.TEXT, rowId, value))
+
+      override fun onFocusChange(rowId: String, focused: Boolean) =
+        dispatch(RowValueEvent.bool(surfaceId(), id, RowValueEvent.FOCUS, rowId, focused))
+
+      override fun onDateChange(rowId: String, millis: Double) =
+        dispatch(RowValueEvent.number(surfaceId(), id, RowValueEvent.DATE, rowId, millis))
+
+      override fun onMenuSelect(rowId: String, itemId: String) =
+        dispatch(RowValueEvent.string(surfaceId(), id, RowValueEvent.MENU, rowId, itemId))
+
+      override fun onSwipeAction(rowId: String, actionId: String) =
+        dispatch(RowValueEvent.string(surfaceId(), id, RowValueEvent.SWIPE, rowId, actionId))
+    }
+
+  private val adapter = CollectionAdapter(rowStyle(), listStyle(), rowEvents)
 
   private val decoration = GroupDecoration(listStyle())
 
@@ -137,7 +166,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     list.addItemDecoration(stickyHeaders)
     list.addOnItemTouchListener(
       PinnedHeaderTouchListener(stickyHeaders) { sectionId ->
-        dispatch(SectionActionEvent(UIManagerHelper.getSurfaceId(reactContext), id, sectionId))
+        dispatch(SectionActionEvent(surfaceId(), id, sectionId))
       }
     )
     list.addOnScrollListener(scroll)
@@ -336,9 +365,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       dark = darkAppearance,
     )
 
-  private fun emitRowPress(rowId: String) {
-    dispatch(RowPressEvent(UIManagerHelper.getSurfaceId(reactContext), id, rowId))
-  }
+  private fun surfaceId(): Int = UIManagerHelper.getSurfaceId(reactContext)
 
   private fun dispatch(event: Event<*>) {
     UIManagerHelper.getEventDispatcherForReactTag(reactContext, id)?.dispatchEvent(event)

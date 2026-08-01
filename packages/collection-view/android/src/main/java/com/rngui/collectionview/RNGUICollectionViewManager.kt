@@ -90,6 +90,12 @@ class RNGUICollectionViewManager :
       ScrollEvent.MOMENTUM_BEGIN to MapBuilder.of("registrationName", "onMomentumScrollBegin"),
       ScrollEvent.MOMENTUM_END to MapBuilder.of("registrationName", "onMomentumScrollEnd"),
       ContentSizeChangeEvent.NAME to MapBuilder.of("registrationName", "onContentSizeChange"),
+      RowValueEvent.SWITCH to MapBuilder.of("registrationName", "onSwitchChange"),
+      RowValueEvent.TEXT to MapBuilder.of("registrationName", "onTextChange"),
+      RowValueEvent.FOCUS to MapBuilder.of("registrationName", "onFocusChange"),
+      RowValueEvent.DATE to MapBuilder.of("registrationName", "onDateChange"),
+      RowValueEvent.MENU to MapBuilder.of("registrationName", "onMenuSelect"),
+      RowValueEvent.SWIPE to MapBuilder.of("registrationName", "onSwipeAction"),
       VisibleRangeChangeEvent.NAME to MapBuilder.of("registrationName", "onVisibleRangeChange"),
     )
 

@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.rngui.collectionview.generated.RowKind
 
 /**
  * The adapter, and the Android analogue of `UICollectionViewDiffableDataSource`.
@@ -26,7 +27,7 @@ import androidx.recyclerview.widget.RecyclerView
 class CollectionAdapter(
   private var style: RowStyle,
   private var listStyle: ListStyle,
-  private val onRowPress: (rowId: String) -> Unit,
+  private val events: RowEvents,
 ) : ListAdapter<Item, RecyclerView.ViewHolder>(DIFF) {
 
   /**
@@ -46,18 +47,33 @@ class CollectionAdapter(
   fun itemAtOrNull(position: Int): Item? =
     if (position in 0 until itemCount) getItem(position) else null
 
+  /**
+   * One view type per row *kind*, so each gets its own pool.
+   *
+   * The direct analogue of what `DatePickerStyle` forces on iOS — a cell configured as a compact
+   * pill cannot be reconfigured into a calendar — generalised to every kind. A holder built for a
+   * `switch` never has to become a `textField`, which is what lets `RowView` create its control
+   * once in the constructor instead of tearing one down and building another on every bind.
+   */
   override fun getItemViewType(position: Int): Int =
-    when (getItem(position)) {
+    when (val item = getItem(position)) {
       is Item.Header -> TYPE_HEADER
       is Item.Footer -> TYPE_FOOTER
-      is Item.Row -> TYPE_ROW
+      is Item.Row -> TYPE_ROW_BASE + item.row.kind.ordinal
     }
 
   override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
     when (viewType) {
       TYPE_HEADER -> LabelHolder(supplementaryView(parent.context, isHeader = true))
       TYPE_FOOTER -> LabelHolder(supplementaryView(parent.context, isHeader = false))
-      else -> RowHolder(RowView(parent.context))
+      else ->
+        RowHolder(
+          RowView(
+            parent.context,
+            RowKind.entries.getOrElse(viewType - TYPE_ROW_BASE) { RowKind.default },
+            events,
+          )
+        )
     }
 
   override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
@@ -81,14 +97,15 @@ class CollectionAdapter(
         // Set unconditionally, including to null: a recycled holder keeps the listener the last
         // row installed, and a non-selectable row inheriting one is a row that reports a press
         // nobody can see it accepting.
-        view.setOnClickListener(
-          if (item.row.selectable == true && item.row.disabled != true) {
-            { onRowPress(item.row.id) }
-          } else {
-            null
-          }
-        )
-        view.isClickable = item.row.selectable == true && item.row.disabled != true
+        // A `menu` row installs its own click listener (it opens the popup), so this must not
+        // overwrite it. Every other kind gets the press listener set unconditionally, including to
+        // null: a recycled holder keeps whatever the last row installed, and a non-selectable row
+        // inheriting one reports a press nobody can see it accepting.
+        val pressable = item.row.selectable == true && item.row.disabled != true
+        if (item.row.kind != RowKind.menu) {
+          view.setOnClickListener(if (pressable) ({ events.onRowPress(item.row.id) }) else null)
+          view.isClickable = pressable
+        }
       }
     }
   }
@@ -105,7 +122,9 @@ class CollectionAdapter(
   private companion object {
     const val TYPE_HEADER = 1
     const val TYPE_FOOTER = 2
-    const val TYPE_ROW = 3
+
+    /** Row view types are `TYPE_ROW_BASE + RowKind.ordinal`, so they never collide with these. */
+    const val TYPE_ROW_BASE = 100
 
     /**
      * A section header or footer.
