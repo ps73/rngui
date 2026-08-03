@@ -46,13 +46,25 @@ class GroupDecoration(private var style: ListStyle) : RecyclerView.ItemDecoratio
     val segmentGap =
       if (item is Item.Row && !item.positionInSection.isFirst) style.itemGapPx else 0
 
+    // **Air at both ends of the list, and it has to come from here.** On iOS the grouped list gets
+    // this for free twice over: `insetGrouped` insets its first and last sections, and the scroll
+    // view's safe-area inset keeps the content clear of the tab bar. Android has neither — an
+    // opaque toolbar reserves its own space and stops, and a native tab bar is a sibling view
+    // rather than an overlay, so without this the first card is flush against the toolbar and the
+    // last one against the tab bar. It read as a missing margin, which is exactly what it was.
+    //
+    // The same value as the gap *between* sections, so the list is bounded by the rhythm it already
+    // has rather than by a second number that has to be kept in step. `plain` sets it to zero and
+    // therefore stays flush, which is what a plain list should do.
+    if (position == state.itemCount - 1) outRect.bottom = style.sectionSpacingPx
+
     // `sectionSpacing` is the *whole* gap between one section and the next, not a contribution to
     // it — the iOS semantics, restated here because the natural Android implementation is a margin
     // on both sides, which would double it.
     outRect.top =
       segmentGap +
       when {
-        position == 0 -> 0
+        position == 0 -> style.sectionSpacingPx
         item is Item.Header -> style.sectionSpacingPx
         // A section with no header still needs the gap, and its first row is where it lands.
         // Asked of the previous item rather than tracked on the section, because that keeps the
