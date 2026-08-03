@@ -56,6 +56,9 @@ public final class RNGUICollectionViewHost: NSObject {
   @objc public var onTextChange: ((String, String) -> Void)?
   @objc public var onFocusChange: ((String, Bool) -> Void)?
   @objc public var onDateChange: ((String, Double) -> Void)?
+  /// Continuous, one per drag frame. See `onSliderCommit` for the once-per-gesture counterpart.
+  @objc public var onSliderChange: ((String, Double) -> Void)?
+  @objc public var onSliderCommit: ((String, Double) -> Void)?
   @objc public var onMenuSelect: ((String, String) -> Void)?
   @objc public var onSwipeAction: ((String, String) -> Void)?
   /// Carries a *section* id, unlike every other block here. A header button belongs to no row.
@@ -156,6 +159,7 @@ public final class RNGUICollectionViewHost: NSObject {
     UICollectionView.CellRegistration<UICollectionViewListCell, RowSpec>!
   private var hostRegistration: UICollectionView.CellRegistration<HostCell, RowSpec>!
   private var switchRegistration: UICollectionView.CellRegistration<SwitchCell, RowSpec>!
+  private var sliderRegistration: UICollectionView.CellRegistration<SliderCell, RowSpec>!
   private var textFieldRegistration:
     UICollectionView.CellRegistration<TextFieldCell, RowSpec>!
   private var textAreaRegistration: UICollectionView.CellRegistration<TextAreaCell, RowSpec>!
@@ -273,6 +277,7 @@ public final class RNGUICollectionViewHost: NSObject {
     listRegistration = makeListRegistration()
     hostRegistration = makeHostRegistration()
     switchRegistration = makeSwitchRegistration()
+    sliderRegistration = makeSliderRegistration()
     textFieldRegistration = makeTextFieldRegistration()
     textAreaRegistration = makeTextAreaRegistration()
     menuRegistration = makeMenuRegistration()
@@ -888,6 +893,47 @@ public final class RNGUICollectionViewHost: NSObject {
     }
   }
 
+  /**
+   * The `UISlider` row.
+   *
+   * No `contentConfiguration` at all, unlike every other registration here: the control fills the
+   * row, so there is no label for the content configuration to lay out and assigning an empty one
+   * would reserve its margins for nothing.
+   */
+  private func makeSliderRegistration()
+    -> UICollectionView.CellRegistration<SliderCell, RowSpec>
+  {
+    UICollectionView.CellRegistration { [weak self] cell, _, row in
+      guard let self else { return }
+      self.applyBackground(to: cell, row: row)
+
+      cell.configure(
+        value: Float(row.sliderValue ?? row.sliderMin ?? 0),
+        minimum: Float(row.sliderMin ?? 0),
+        // Guarded rather than trusted: an inverted range makes `UISlider` unusable rather than
+        // throwing, which is harder to diagnose than a crash, and a caller building the bound from
+        // data can produce one by accident.
+        maximum: Float(max(row.sliderMax ?? 1, (row.sliderMin ?? 0) + .ulpOfOne)),
+        step: Float(row.sliderStep ?? 0),
+        minimumImage: row.sliderMinImage.flatMap { UIImage(systemName: $0) },
+        maximumImage: row.sliderMaxImage.flatMap { UIImage(systemName: $0) },
+        tint: self.rowTint(row),
+        enabled: row.disabled != true
+      )
+
+      // Reassigned every pass, capturing this row's id — a reused cell arrives holding the previous
+      // row's closures, and a slider reporting against the wrong row moves a control the user is
+      // not touching.
+      let rowId = row.id
+      cell.onChange = { [weak self] value in
+        self?.onSliderChange?(rowId, Double(value))
+      }
+      cell.onCommit = { [weak self] value in
+        self?.onSliderCommit?(rowId, Double(value))
+      }
+    }
+  }
+
   private func makeTextFieldRegistration()
     -> UICollectionView.CellRegistration<TextFieldCell, RowSpec>
   {
@@ -1327,6 +1373,10 @@ public final class RNGUICollectionViewHost: NSObject {
       case .host:
         return collectionView.dequeueConfiguredReusableCell(
           using: self.hostRegistration, for: indexPath, item: row
+        )
+      case .slider:
+        return collectionView.dequeueConfiguredReusableCell(
+          using: self.sliderRegistration, for: indexPath, item: row
         )
       case .switch:
         return collectionView.dequeueConfiguredReusableCell(

@@ -179,6 +179,16 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
       emitter->onDateChange({.rowId = RCTStringFromNSString(rowId), .millis = millis});
     };
 
+    _host.onSliderChange = ^(NSString *rowId, double value) {
+      RNGUI_EMITTER(emitter)
+      emitter->onSliderChange({.rowId = RCTStringFromNSString(rowId), .value = value});
+    };
+
+    _host.onSliderCommit = ^(NSString *rowId, double value) {
+      RNGUI_EMITTER(emitter)
+      emitter->onSliderCommit({.rowId = RCTStringFromNSString(rowId), .value = value});
+    };
+
     _host.onMenuSelect = ^(NSString *rowId, NSString *itemId) {
       RNGUI_EMITTER(emitter)
       emitter->onMenuSelect({

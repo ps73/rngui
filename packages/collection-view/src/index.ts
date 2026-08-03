@@ -18,6 +18,7 @@ import {
   Spinner,
   SwipeAction,
   SwipeActions,
+  Slider,
   Switch,
   TextArea,
   TextField,
@@ -46,6 +47,7 @@ export type {
   MenuProps,
   RowProps,
   SectionProps,
+  SliderProps,
   SwipeActionProps,
   SwipeActionsProps,
   TextAreaProps,
@@ -124,6 +126,7 @@ export const CollectionView = {
 
   // Controls
   Card,
+  Slider,
   Switch,
   TextField,
   TextArea,

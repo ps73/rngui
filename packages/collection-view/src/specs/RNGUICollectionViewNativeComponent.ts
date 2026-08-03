@@ -328,6 +328,22 @@ export interface NativeProps extends ViewProps {
   >
   /** `millis` rather than a date string: it is the one date encoding that survives JSON intact. */
   onDateChange?: DirectEventHandler<Readonly<{ rowId: string; millis: Double }>>
+  /**
+   * A slider's value, while it is being dragged.
+   *
+   * **Fires per frame, which is why the pair exists.** A drag across a phone produces sixty of
+   * these a second, and a caller that recomputes a screen from each one is doing sixty React
+   * commits a second — the exact cost this library exists to avoid. `onSliderCommit` fires once,
+   * on release, and is what most callers actually want to act on; this one is for the label that
+   * has to track the thumb.
+   */
+  onSliderChange?: DirectEventHandler<
+    Readonly<{ rowId: string; value: Double }>
+  >
+  /** The value the drag settled on, once. */
+  onSliderCommit?: DirectEventHandler<
+    Readonly<{ rowId: string; value: Double }>
+  >
   onMenuSelect?: DirectEventHandler<Readonly<{ rowId: string; itemId: string }>>
   onSwipeAction?: DirectEventHandler<
     Readonly<{ rowId: string; actionId: string }>

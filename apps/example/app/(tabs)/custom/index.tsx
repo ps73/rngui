@@ -52,6 +52,8 @@ export default function CustomScreen() {
   const [face, setFace] = useState<(typeof FACES)[number]>('system')
   const [weightAxis, setWeightAxis] =
     useState<(typeof WEIGHT_AXIS)[number]>(400)
+  const [brightness, setBrightness] = useState(0.4)
+  const [volume, setVolume] = useState(7)
 
   /**
    * One spec, shared by rows, headers and footers.
@@ -159,6 +161,44 @@ export default function CustomScreen() {
           </CollectionView.Host>
         </CollectionView.Section>
       )}
+
+      <CollectionView.Section
+        header="Sliders"
+        footer="A UISlider on iOS and a Material 3 Slider on Android — the one control whose shape the two platforms have genuinely diverged on, not just its colours. Brightness reports continuously so the value above it tracks the thumb; Volume reports only on release, which is what most callers should do. The step is drawn as tick marks on Android and enforced-but-invisible on iOS, because UISlider has never had them."
+      >
+        <CollectionView.Row id="brightness-value">
+          <CollectionView.Icon systemImage="sun.max" />
+          <CollectionView.Label>Brightness</CollectionView.Label>
+          <CollectionView.Value>
+            {`${Math.round(brightness * 100)}%`}
+          </CollectionView.Value>
+        </CollectionView.Row>
+        <CollectionView.Row id="brightness">
+          <CollectionView.Slider
+            value={brightness}
+            minimumImage="sun.min"
+            maximumImage="sun.max"
+            onValueChange={setBrightness}
+          />
+        </CollectionView.Row>
+
+        <CollectionView.Row id="volume-value">
+          <CollectionView.Icon systemImage="speaker.wave.3.fill" />
+          <CollectionView.Label>Volume</CollectionView.Label>
+          <CollectionView.Value>{`${volume} / 10`}</CollectionView.Value>
+        </CollectionView.Row>
+        <CollectionView.Row id="volume">
+          <CollectionView.Slider
+            value={volume}
+            minimumValue={0}
+            maximumValue={10}
+            step={1}
+            // Only on release. A continuous handler here would be ten commits per drag for a value
+            // that is only meaningful once the finger lifts.
+            onSlidingComplete={setVolume}
+          />
+        </CollectionView.Row>
+      </CollectionView.Section>
 
       <CollectionView.Section
         header="Integrations"

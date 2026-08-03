@@ -24,4 +24,14 @@ interface RowEvents {
   fun onMenuSelect(rowId: String, itemId: String)
 
   fun onSwipeAction(rowId: String, actionId: String)
+
+  /**
+   * A slider's value while it is being dragged, and once more when the drag settles.
+   *
+   * Two callbacks for one gesture because they cost differently: the first fires per frame and is
+   * for a label tracking the thumb, the second fires once and is what most callers act on.
+   */
+  fun onSliderChange(rowId: String, value: Double)
+
+  fun onSliderCommit(rowId: String, value: Double)
 }

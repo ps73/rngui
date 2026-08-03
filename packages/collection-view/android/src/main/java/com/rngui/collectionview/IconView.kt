@@ -124,13 +124,40 @@ class IconView(context: Context) : View(context) {
   }
 
   /**
+   * A glyph named directly, outside a row's leading slot.
+   *
+   * For the icons a *control* lays out rather than the row — the two suns flanking a brightness
+   * slider, which `UISlider` has properties for and Material's has not. Never a container, never a
+   * monogram: those belong to the leading slot, and this one is a decoration on a control.
+   */
+  fun bindStandalone(systemImage: String?, style: RowStyle, disabled: Boolean) {
+    monogram = null
+    tileColor = null
+    codepoint = systemImage?.let { resolve(materialSymbol = null, systemImage = it) }
+    if (codepoint == null) {
+      visibility = GONE
+      return
+    }
+    glyphPaint.typeface = typeface(context)
+    // `onSurfaceVariant`, which is what M3 puts either side of a slider — the accent belongs to the
+    // track, and a second tinted thing beside it competes with the control for attention.
+    glyphPaint.color = if (disabled) style.disabledColor else style.secondaryColor
+    glyphSizePx = context.dp(DEFAULT_GLYPH_DP).toFloat()
+    glyphPaint.textSize = glyphSizePx
+    visibility = VISIBLE
+  }
+
+  /**
    * Which glyph, if any.
    *
    * `materialSymbol` wins over `systemImage` when both are set: it is the escape hatch, and an
    * escape hatch that loses to the thing it exists to override is not one.
    */
-  private fun resolve(row: RowSpec): Int? {
-    row.materialSymbol?.let { name ->
+  private fun resolve(row: RowSpec): Int? =
+    resolve(row.materialSymbol, row.systemImage)
+
+  private fun resolve(materialSymbol: String?, systemImage: String?): Int? {
+    materialSymbol?.let { name ->
       MaterialSymbols.byMaterialName[name]?.let { return it }
       warnOnce(
         "materialSymbol:$name",
@@ -141,7 +168,7 @@ class IconView(context: Context) : View(context) {
       return null
     }
 
-    val sfName = row.systemImage ?: return null
+    val sfName = systemImage ?: return null
     MaterialSymbols.bySfName[sfName]?.let { return it }
     warnOnce(
       "systemImage:$sfName",

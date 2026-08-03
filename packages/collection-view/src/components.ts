@@ -240,6 +240,57 @@ export interface ToggleProps {
 /** A trailing `UISwitch`. */
 export const Switch = tagged<ToggleProps>('switch', 'CollectionView.Switch')
 
+export interface SliderProps {
+  /**
+   * Controlled, like every other control here — with one thing native keeps to itself.
+   *
+   * A drag reports a value per frame, so the commit carrying frame N reaches native while the thumb
+   * is at frame N+3. Native therefore ignores this prop for as long as a drag is in progress and
+   * takes it again on release: assigning the stale value would drag the thumb backwards under the
+   * finger. Setting it from anywhere *other* than the drag — a reset button, a value arriving from
+   * the network — lands immediately, which is the case that matters.
+   */
+  value?: number
+  /** Defaults to 0. */
+  minimumValue?: number
+  /** Defaults to 1, so an unbounded slider is a fraction. */
+  maximumValue?: number
+  /**
+   * Quantises the value. Unset is continuous.
+   *
+   * Android also *draws* the stops; iOS has never had tick marks on a `UISlider`, so there the step
+   * is enforced without being shown.
+   */
+  step?: number
+  /**
+   * SF Symbols flanking the track — the small and large suns on a brightness row.
+   *
+   * `UISlider` has slots for exactly these. Android has no such property, so the Material slider is
+   * laid out between two icon views to the same effect.
+   */
+  minimumImage?: string
+  maximumImage?: string
+  /**
+   * Fires continuously while the thumb moves — sixty times a second during a drag.
+   *
+   * **Prefer `onSlidingComplete` for anything expensive.** A caller that recomputes a screen from
+   * this is doing sixty React commits a second, which is the cost this library exists to avoid.
+   * This one is for the label that has to track the thumb.
+   */
+  onValueChange?: (value: number) => void
+  /** Fires once, when the finger lifts. What most callers should act on. */
+  onSlidingComplete?: (value: number) => void
+  disabled?: boolean
+}
+
+/**
+ * A `UISlider` on iOS, a Material 3 `Slider` on Android.
+ *
+ * The control fills the row, so it takes no `Label` beside it — M3 puts a slider's readout in its
+ * own value bubble and iOS in a row above, and neither is a trailing accessory.
+ */
+export const Slider = tagged<SliderProps>('slider', 'CollectionView.Slider')
+
 /**
  * A trailing filled/hollow circle — the multi-select affordance.
  *

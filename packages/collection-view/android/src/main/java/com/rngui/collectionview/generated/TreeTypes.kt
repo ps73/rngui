@@ -28,6 +28,7 @@ enum class RowKind(val raw: String) {
   button("button"),
   menu("menu"),
   datePicker("datePicker"),
+  slider("slider"),
   card("card"),
   chip("chip"),
 
@@ -510,6 +511,41 @@ data class RowSpec(
   val minDateMillis: Double? = null,
   val maxDateMillis: Double? = null,
   /**
+   * `slider` position, in the units [sliderMin]…[sliderMax] describe.
+   *
+   * **A controlled value, with one exception that native owns.** Like every other control here the
+   * caller holds the state and native reports changes — but a slider reports them *per frame of a
+   * drag*, so the commit carrying frame N routinely arrives while the thumb is at frame N+3. Native
+   * therefore ignores incoming values for as long as a drag is in progress and takes them again on
+   * release, which is the numeric form of the echo rule the text fields follow.
+   */
+  val sliderValue: Double? = null,
+  /**
+   * Defaults to 0.
+   */
+  val sliderMin: Double? = null,
+  /**
+   * Defaults to 1, so an unbounded slider is a fraction — which is what most of them are.
+   */
+  val sliderMax: Double? = null,
+  /**
+   * Quantises the value. Unset or 0 is continuous.
+   *
+   * Both platforms round to it, but only Android *draws* it: M3 marks each stop on the track, and
+   * iOS has never had tick marks on a `UISlider`. Documented rather than faked — drawing our own
+   * ticks on iOS would produce a control no iOS user has seen.
+   */
+  val sliderStep: Double? = null,
+  /**
+   * SF Symbols flanking the track — the small and large suns on a brightness slider.
+   *
+   * `UISlider` has slots for exactly these (`minimumValueImage`/`maximumValueImage`), and Android
+   * has no equivalent property, so the Material slider is laid out between two icon views to the
+   * same effect. Mapped through the Material Symbols table on Android like any other `systemImage`.
+   */
+  val sliderMinImage: String? = null,
+  val sliderMaxImage: String? = null,
+  /**
    * `button` emphasis.
    */
   val role: ButtonRole? = null,
@@ -561,6 +597,12 @@ data class RowSpec(
         datePickerStyle = json.string("datePickerStyle")?.let(DatePickerStyle::from),
         minDateMillis = json.double("minDateMillis"),
         maxDateMillis = json.double("maxDateMillis"),
+        sliderValue = json.double("sliderValue"),
+        sliderMin = json.double("sliderMin"),
+        sliderMax = json.double("sliderMax"),
+        sliderStep = json.double("sliderStep"),
+        sliderMinImage = json.string("sliderMinImage"),
+        sliderMaxImage = json.string("sliderMaxImage"),
         role = json.string("role")?.let(ButtonRole::from),
         menuItems = json.array("menuItems")?.map { (it as? JSONObject)?.let(MenuItemSpec::from) ?: MenuItemSpec() },
         selectedItemId = json.string("selectedItemId"),

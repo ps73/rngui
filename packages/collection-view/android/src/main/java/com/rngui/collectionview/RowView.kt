@@ -18,6 +18,7 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.annotation.VisibleForTesting
 import com.google.android.material.materialswitch.MaterialSwitch
+import com.google.android.material.slider.Slider as MaterialSlider
 import com.rngui.collectionview.generated.AutoCapitalize
 import com.rngui.collectionview.generated.ButtonRole
 import com.rngui.collectionview.generated.DatePickerMode
@@ -151,6 +152,35 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       null
     }
 
+  /**
+   * The M3 slider, with a glyph either side of it.
+   *
+   * **`com.google.android.material.slider.Slider`, not `android.widget.SeekBar`.** The platform
+   * widget is the Holo track-and-thumb the way `Switch` was, and M3 Expressive moved the slider
+   * further from it than almost any other component: a thick track, a *gap* between the filled and
+   * empty halves, a vertical handle bar rather than a knob, and a dot marking the far end. Drawing
+   * that over a `SeekBar` would mean reimplementing the component; using Material's means getting
+   * it, including the value label and the handle's press animation.
+   *
+   * The flanking icons are ours. `UISlider` has `minimumValueImage`/`maximumValueImage` slots and
+   * Material's has no equivalent, so the row lays the two out around the track to the same effect —
+   * which is also what Android's own brightness and volume rows do.
+   */
+  private val sliderView: MaterialSlider? =
+    if (kind == RowKind.slider) {
+      MaterialSlider(context).apply {
+        layoutParams = LayoutParams(0, WRAP, 1f)
+        // The row is not selectable, so the slider owns the whole gesture; without this the list
+        // steals the drag the moment it crosses the touch slop.
+        isClickable = true
+      }
+    } else {
+      null
+    }
+
+  private val sliderMinIcon: IconView? = if (kind == RowKind.slider) IconView(context) else null
+  private val sliderMaxIcon: IconView? = if (kind == RowKind.slider) IconView(context) else null
+
   private val editText: EditText? =
     if (kind == RowKind.textField || kind == RowKind.textArea) {
       EditText(context).apply {
@@ -241,6 +271,13 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     when (kind) {
       RowKind.textField,
       RowKind.textArea -> addView(editText)
+      // The track fills the row. A label above it would be a two-line row, and M3 puts a slider's
+      // label in its own value bubble rather than beside the track.
+      RowKind.slider -> {
+        addView(sliderMinIcon)
+        addView(sliderView)
+        addView(sliderMaxIcon)
+      }
       RowKind.card -> {
         cardColumn!!.addView(labelView)
         cardColumn.addView(cardValueView)
@@ -303,6 +340,7 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         bindLabels(row, style, tint, disabled)
         bindSwitch(row, disabled)
       }
+      RowKind.slider -> bindSlider(row, style, disabled)
       RowKind.datePicker -> {
         bindLabels(row, style, tint, disabled)
         bindDatePicker(row, style, tint, disabled)
@@ -380,6 +418,65 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     control.isEnabled = !disabled
     control.setOnCheckedChangeListener(switchListener)
   }
+
+  /**
+   * The track, its bounds, and the two glyphs beside it.
+   *
+   * **Incoming values are ignored while the thumb is down**, which is the numeric form of the rule
+   * `applyText` follows. A drag reports sixty values a second, JavaScript turns each into a commit,
+   * and the commit carrying frame N lands while the thumb is at frame N+3 — so writing it back
+   * would drag the thumb backwards under the finger, sixty times a second. `isDragging` is set from
+   * Material's own touch callbacks, so the window it covers is exactly the gesture.
+   */
+  private fun bindSlider(row: RowSpec, style: RowStyle, disabled: Boolean) {
+    val slider = sliderView ?: return
+
+    sliderMinIcon?.bindStandalone(row.sliderMinImage, style, disabled)
+    sliderMaxIcon?.bindStandalone(row.sliderMaxImage, style, disabled)
+
+    slider.isEnabled = !disabled
+    if (isDragging) return
+
+    // Detached before the bounds move: Material fires the change listener from `setValueTo` when
+    // the current value no longer fits the new range, and that would be reported as a change the
+    // user never made — the same trap a recycled `Switch` sets with `isChecked`.
+    slider.clearOnChangeListeners()
+    slider.clearOnSliderTouchListeners()
+
+    val from = row.sliderMin ?: DEFAULT_SLIDER_MIN
+    // Guarded rather than trusted. Material throws `IllegalStateException` on an inverted or empty
+    // range, which would take the whole list down for one badly-specified row — and a caller
+    // building `sliderMax` from data can produce one by accident.
+    val to = (row.sliderMax ?: DEFAULT_SLIDER_MAX).let { if (it > from) it else from + 1f.toDouble() }
+
+    slider.valueFrom = from.toFloat()
+    slider.valueTo = to.toFloat()
+    // `0` is Material's own sentinel for continuous, and it is what the tree means by "unset".
+    slider.stepSize = (row.sliderStep ?: 0.0).toFloat().coerceAtLeast(0f)
+    slider.value = (row.sliderValue ?: from).toFloat().coerceIn(from.toFloat(), to.toFloat())
+
+    slider.addOnChangeListener { _, value, fromUser ->
+      // Programmatic assignments above are already excluded by the detach, but a value Material
+      // itself settles on — snapping to a step — arrives with `fromUser` false and is not news.
+      if (fromUser) events.onSliderChange(boundRowId, value.toDouble())
+    }
+    slider.addOnSliderTouchListener(sliderTouchListener)
+  }
+
+  /** Set from Material's touch callbacks, so it spans exactly the gesture. See [bindSlider]. */
+  private var isDragging = false
+
+  private val sliderTouchListener =
+    object : com.google.android.material.slider.Slider.OnSliderTouchListener {
+      override fun onStartTrackingTouch(slider: MaterialSlider) {
+        isDragging = true
+      }
+
+      override fun onStopTrackingTouch(slider: MaterialSlider) {
+        isDragging = false
+        events.onSliderCommit(boundRowId, slider.value.toDouble())
+      }
+    }
 
   private fun bindText(row: RowSpec, style: RowStyle, disabled: Boolean) {
     val field = editText ?: return
@@ -679,6 +776,11 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
 
     /** How many un-echoed values to remember. Matches the iOS cell's bound. */
     const val MAX_ECHOES = 32
+
+    // An unbounded slider is a fraction, which is what most of them are — and what `UISlider`
+    // defaults to, so an unspecified range means the same thing on both platforms.
+    const val DEFAULT_SLIDER_MIN = 0.0
+    const val DEFAULT_SLIDER_MAX = 1.0
 
     /**
      * Applied on top of the greyed text colours rather than instead of them.

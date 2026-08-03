@@ -53,6 +53,14 @@ export type RowKind =
   /** A `UIDatePicker`, compact or inline. */
   | 'datePicker'
   /**
+   * A `UISlider` on iOS, a Material 3 `Slider` on Android.
+   *
+   * The one control where the two platforms' *shapes* have diverged rather than just their
+   * colours: iOS draws a thin track with a round knob, and M3 Expressive draws a thick track that
+   * the handle cuts a gap into. Both are the local control, drawn by the local framework.
+   */
+  | 'slider'
+  /**
    * A rich stacked cell — a title, a prominent value and a caption.
    *
    * The recyclable counterpart to a `Host` row: everything a summary card usually needs, described
@@ -299,6 +307,38 @@ export interface RowSpec {
   datePickerStyle?: DatePickerStyle
   minDateMillis?: number
   maxDateMillis?: number
+
+  /**
+   * `slider` position, in the units [sliderMin]…[sliderMax] describe.
+   *
+   * **A controlled value, with one exception that native owns.** Like every other control here the
+   * caller holds the state and native reports changes — but a slider reports them *per frame of a
+   * drag*, so the commit carrying frame N routinely arrives while the thumb is at frame N+3. Native
+   * therefore ignores incoming values for as long as a drag is in progress and takes them again on
+   * release, which is the numeric form of the echo rule the text fields follow.
+   */
+  sliderValue?: number
+  /** Defaults to 0. */
+  sliderMin?: number
+  /** Defaults to 1, so an unbounded slider is a fraction — which is what most of them are. */
+  sliderMax?: number
+  /**
+   * Quantises the value. Unset or 0 is continuous.
+   *
+   * Both platforms round to it, but only Android *draws* it: M3 marks each stop on the track, and
+   * iOS has never had tick marks on a `UISlider`. Documented rather than faked — drawing our own
+   * ticks on iOS would produce a control no iOS user has seen.
+   */
+  sliderStep?: number
+  /**
+   * SF Symbols flanking the track — the small and large suns on a brightness slider.
+   *
+   * `UISlider` has slots for exactly these (`minimumValueImage`/`maximumValueImage`), and Android
+   * has no equivalent property, so the Material slider is laid out between two icon views to the
+   * same effect. Mapped through the Material Symbols table on Android like any other `systemImage`.
+   */
+  sliderMinImage?: string
+  sliderMaxImage?: string
 
   /** `button` emphasis. */
   role?: ButtonRole

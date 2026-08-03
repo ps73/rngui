@@ -17,6 +17,7 @@ import type {
   MenuProps,
   RowProps,
   SectionProps,
+  SliderProps,
   SwipeActionProps,
   SwipeActionsProps,
   TextAreaProps,
@@ -41,6 +42,7 @@ import type {
 const CONTROL_TAGS = [
   'card',
   'switch',
+  'slider',
   'textField',
   'textArea',
   'datePicker',
@@ -68,6 +70,8 @@ const ACCESSORY_TAGS: ReadonlyArray<readonly [string, AccessoryKind]> = [
 export interface HandlerRegistry {
   press: Map<string, () => void>
   switchChange: Map<string, (value: boolean) => void>
+  sliderChange: Map<string, (value: number) => void>
+  sliderCommit: Map<string, (value: number) => void>
   textChange: Map<string, (text: string) => void>
   focusChange: Map<string, (focused: boolean) => void>
   dateChange: Map<string, (millis: number) => void>
@@ -85,6 +89,8 @@ export function createRegistry(): HandlerRegistry {
   return {
     press: new Map(),
     switchChange: new Map(),
+    sliderChange: new Map(),
+    sliderCommit: new Map(),
     textChange: new Map(),
     focusChange: new Map(),
     dateChange: new Map(),
@@ -367,6 +373,26 @@ function serializeControl(
       // to a tap, which is exactly what an expandable Date row is.
       row.selectable = rowHasPress
       return 'switch'
+    }
+    case 'slider': {
+      const slider = props as SliderProps
+      if (slider.value != null) row.sliderValue = slider.value
+      if (slider.minimumValue != null) row.sliderMin = slider.minimumValue
+      if (slider.maximumValue != null) row.sliderMax = slider.maximumValue
+      if (slider.step != null) row.sliderStep = slider.step
+      if (slider.minimumImage != null) row.sliderMinImage = slider.minimumImage
+      if (slider.maximumImage != null) row.sliderMaxImage = slider.maximumImage
+      if (slider.disabled === true) row.disabled = true
+      if (slider.onValueChange != null) {
+        registry.sliderChange.set(rowId, slider.onValueChange)
+      }
+      if (slider.onSlidingComplete != null) {
+        registry.sliderCommit.set(rowId, slider.onSlidingComplete)
+      }
+      // The track owns the whole width and the whole gesture, so there is nothing left of the row
+      // to press — unlike a switch, which leaves the label beside it tappable.
+      row.selectable = false
+      return 'slider'
     }
     case 'textField':
     case 'textArea': {

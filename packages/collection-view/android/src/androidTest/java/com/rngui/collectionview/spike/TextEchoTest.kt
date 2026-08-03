@@ -61,6 +61,10 @@ class TextEchoTest {
       override fun onMenuSelect(rowId: String, itemId: String) = Unit
 
       override fun onSwipeAction(rowId: String, actionId: String) = Unit
+
+      override fun onSliderChange(rowId: String, value: Double) = Unit
+
+      override fun onSliderCommit(rowId: String, value: Double) = Unit
     }
 
   @Test

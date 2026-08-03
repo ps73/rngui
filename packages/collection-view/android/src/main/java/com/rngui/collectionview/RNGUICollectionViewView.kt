@@ -149,6 +149,14 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
       override fun onSwipeAction(rowId: String, actionId: String) =
         dispatch(RowValueEvent.string(surfaceId(), id, RowValueEvent.SWIPE, rowId, actionId))
+
+      override fun onSliderChange(rowId: String, value: Double) =
+        dispatch(RowValueEvent.number(surfaceId(), id, RowValueEvent.SLIDER, rowId, value))
+
+      override fun onSliderCommit(rowId: String, value: Double) =
+        dispatch(
+          RowValueEvent.number(surfaceId(), id, RowValueEvent.SLIDER_COMMIT, rowId, value)
+        )
     }
 
   /**

@@ -66,6 +66,8 @@ private constructor(
     const val DATE = "topDateChange"
     const val MENU = "topMenuSelect"
     const val SWIPE = "topSwipeAction"
+    const val SLIDER = "topSliderChange"
+    const val SLIDER_COMMIT = "topSliderCommit"
 
     fun bool(surfaceId: Int, tag: Int, name: String, rowId: String, value: Boolean) =
       RowValueEvent(surfaceId, tag, name, rowId) { it.putBoolean(KEY_BY_NAME.getValue(name), value) }
@@ -91,6 +93,8 @@ private constructor(
         DATE to "millis",
         MENU to "itemId",
         SWIPE to "actionId",
+        SLIDER to "value",
+        SLIDER_COMMIT to "value",
       )
   }
 }

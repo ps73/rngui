@@ -463,6 +463,18 @@ export function Root({
         const { rowId, millis } = event.nativeEvent
         registryRef.current.dateChange.get(rowId)?.(millis)
       },
+      onSliderChange: (
+        event: NativeSyntheticEvent<{ rowId: string; value: number }>
+      ) => {
+        const { rowId, value } = event.nativeEvent
+        registryRef.current.sliderChange.get(rowId)?.(value)
+      },
+      onSliderCommit: (
+        event: NativeSyntheticEvent<{ rowId: string; value: number }>
+      ) => {
+        const { rowId, value } = event.nativeEvent
+        registryRef.current.sliderCommit.get(rowId)?.(value)
+      },
       onMenuSelect: (
         event: NativeSyntheticEvent<{ rowId: string; itemId: string }>
       ) => {

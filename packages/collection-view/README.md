@@ -78,15 +78,16 @@ second source of truth to disagree with the children.
 | `Chevron` · `Checkmark` · `Spinner` |                                                  |
 | `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`           |
 
-| Controls     |                                                                                                                                          |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `Switch`     | `value` · `onValueChange` · `disabled`                                                                                                   |
-| `TextField`  | `value` · `onChangeText` · `onFocusChange` · `placeholder` · `keyboardType` · `autoCapitalize` · `returnKeyType` · `secure` · `disabled` |
-| `TextArea`   | the above plus `maxLines` — grows with its content                                                                                       |
-| `Menu`       | `items` · `value` · `onSelect` · `disabled` — a `UIMenu`                                                                                 |
-| `DatePicker` | `value` · `onChange` · `mode` · `variant` · `minimumDate` · `maximumDate`                                                                |
-| `Button`     | `role` · `onPress` · `disabled`                                                                                                          |
-| `Card`       | `value` · `caption` · `systemImage` · `color` — a rich stacked cell that still recycles                                                  |
+| Controls     |                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Switch`     | `value` · `onValueChange` · `disabled`                                                                                                    |
+| `TextField`  | `value` · `onChangeText` · `onFocusChange` · `placeholder` · `keyboardType` · `autoCapitalize` · `returnKeyType` · `secure` · `disabled`  |
+| `TextArea`   | the above plus `maxLines` — grows with its content                                                                                        |
+| `Menu`       | `items` · `value` · `onSelect` · `disabled` — a `UIMenu`                                                                                  |
+| `DatePicker` | `value` · `onChange` · `mode` · `variant` · `minimumDate` · `maximumDate`                                                                 |
+| `Slider`     | `value` · `onValueChange` · `onSlidingComplete` · `minimumValue` · `maximumValue` · `step` · `minimumImage` · `maximumImage` · `disabled` |
+| `Button`     | `role` · `onPress` · `disabled`                                                                                                           |
+| `Card`       | `value` · `caption` · `systemImage` · `color` — a rich stacked cell that still recycles                                                   |
 
 | Swipe actions  |                                                                          |
 | -------------- | ------------------------------------------------------------------------ |
@@ -333,6 +334,9 @@ Decisions, not gaps. Each one is the platform's own idiom rather than the other'
 | Swipe actions                   | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
 | `datePickerStyle: 'wheels'`     | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
 | `datePickerMode: 'dateAndTime'` | one combined wheel                    | two dialogs, chained — Material has no combined picker                                                                                                 |
+| `Slider`                        | `UISlider` — thin track, capsule knob | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |
+| `Slider` `step`                 | enforced, but not drawn               | enforced **and drawn**, as tick marks. `UISlider` has never had them                                                                                   |
+| `Slider` min/max images         | `minimumValueImage` slots             | icon views laid out either side; Material's slider has no such property                                                                                |
 | Overscroll                      | rubber-band bounce                    | stretch or glow                                                                                                                                        |
 | `contentSize.height`            | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
 

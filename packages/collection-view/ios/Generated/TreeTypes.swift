@@ -22,6 +22,7 @@ enum RowKind: String, Decodable {
   case button
   case menu
   case datePicker
+  case slider
   case card
   case chip
   /// A value this binary does not recognise.
@@ -403,6 +404,31 @@ struct RowSpec: Decodable, Equatable {
   var datePickerStyle: DatePickerStyle?
   var minDateMillis: Double?
   var maxDateMillis: Double?
+  /// `slider` position, in the units [sliderMin]…[sliderMax] describe.
+  ///
+  /// **A controlled value, with one exception that native owns.** Like every other control here the
+  /// caller holds the state and native reports changes — but a slider reports them *per frame of a
+  /// drag*, so the commit carrying frame N routinely arrives while the thumb is at frame N+3. Native
+  /// therefore ignores incoming values for as long as a drag is in progress and takes them again on
+  /// release, which is the numeric form of the echo rule the text fields follow.
+  var sliderValue: Double?
+  /// Defaults to 0.
+  var sliderMin: Double?
+  /// Defaults to 1, so an unbounded slider is a fraction — which is what most of them are.
+  var sliderMax: Double?
+  /// Quantises the value. Unset or 0 is continuous.
+  ///
+  /// Both platforms round to it, but only Android *draws* it: M3 marks each stop on the track, and
+  /// iOS has never had tick marks on a `UISlider`. Documented rather than faked — drawing our own
+  /// ticks on iOS would produce a control no iOS user has seen.
+  var sliderStep: Double?
+  /// SF Symbols flanking the track — the small and large suns on a brightness slider.
+  ///
+  /// `UISlider` has slots for exactly these (`minimumValueImage`/`maximumValueImage`), and Android
+  /// has no equivalent property, so the Material slider is laid out between two icon views to the
+  /// same effect. Mapped through the Material Symbols table on Android like any other `systemImage`.
+  var sliderMinImage: String?
+  var sliderMaxImage: String?
   /// `button` emphasis.
   var role: ButtonRole?
   /// `menu` entries, and which of them is currently chosen.
@@ -413,7 +439,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, sliderValue, sliderMin, sliderMax, sliderStep, sliderMinImage, sliderMaxImage, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -455,6 +481,12 @@ struct RowSpec: Decodable, Equatable {
     datePickerStyle = try container.decodeIfPresent(DatePickerStyle.self, forKey: .datePickerStyle)
     minDateMillis = try container.decodeIfPresent(Double.self, forKey: .minDateMillis)
     maxDateMillis = try container.decodeIfPresent(Double.self, forKey: .maxDateMillis)
+    sliderValue = try container.decodeIfPresent(Double.self, forKey: .sliderValue)
+    sliderMin = try container.decodeIfPresent(Double.self, forKey: .sliderMin)
+    sliderMax = try container.decodeIfPresent(Double.self, forKey: .sliderMax)
+    sliderStep = try container.decodeIfPresent(Double.self, forKey: .sliderStep)
+    sliderMinImage = try container.decodeIfPresent(String.self, forKey: .sliderMinImage)
+    sliderMaxImage = try container.decodeIfPresent(String.self, forKey: .sliderMaxImage)
     role = try container.decodeIfPresent(ButtonRole.self, forKey: .role)
     menuItems = try container.decodeIfPresent([MenuItemSpec].self, forKey: .menuItems)
     selectedItemId = try container.decodeIfPresent(String.self, forKey: .selectedItemId)
