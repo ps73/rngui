@@ -180,16 +180,38 @@ export interface RowSpec {
   /** Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing. */
   imageColor?: string
   /**
-   * Fills a rounded tile behind the glyph and draws the glyph white — Settings' coloured squares.
+   * Fills the platform's icon container behind the glyph and draws the glyph white.
    *
-   * Set, this replaces `imageColor` rather than combining with it: the point of a tile is that the
-   * colour is the *background*, and a Settings row has never had a tinted glyph on a tinted square.
-   * Normalised to `#RRGGBBAA` before crossing.
+   * **The container's shape is the platform's, not the caller's**: a 29pt rounded square on iOS,
+   * which is Settings' coloured tile, and a 40dp circle on Android, which is M3's leading avatar.
+   * Android has never had the tile — it is Apple's, and drawing it there would be the clearest
+   * possible case of one platform wearing the other's clothes. A screen that wants Pixel Settings
+   * leaves this unset and gets the bare monochrome glyph Pixel Settings actually draws.
+   *
+   * Set, this replaces `imageColor` rather than combining with it: the point of a container is that
+   * the colour is the *background*, and neither platform tints the glyph on top of it. Normalised
+   * to `#RRGGBBAA` before crossing.
    */
   imageBackground?: string
   /**
+   * One or two letters drawn in the container instead of a glyph — a contact's initials.
+   *
+   * The monogram avatar every address book falls back to when a person has no photo, and the one
+   * leading element a symbol set cannot express: it is *derived from the row's own data* rather
+   * than chosen from a fixed vocabulary. Both platforms draw it, in the container shape described
+   * on [imageBackground] above.
+   *
+   * Wins over `systemImage` and `materialSymbol` where both are set, and needs `imageBackground` to
+   * have something to sit in — letters floating unbounded where an icon would be read as a layout
+   * bug, so a monogram without a container draws nothing and warns.
+   *
+   * Truncated to two characters by native. Longer is not a monogram, and silently drawing five
+   * letters squeezed into a 40dp circle would be worse than the truncation.
+   */
+  imageMonogram?: string
+  /**
    * The glyph's point size, for a bare symbol. Ignored when `imageBackground` is set, where the
-   * tile's own size decides.
+   * container's own size decides.
    */
   imageSize?: number
   /**

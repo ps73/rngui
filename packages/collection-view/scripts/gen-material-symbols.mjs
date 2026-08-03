@@ -20,7 +20,13 @@
  *   npm run gen:material-symbols
  */
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SF_TO_MATERIAL, EXTRA_MATERIAL_SYMBOLS } from './symbol-map.mjs'
@@ -30,7 +36,14 @@ const root = path.join(here, '..')
 
 const CODEPOINTS = path.join(root, 'assets', 'material-symbols.codepoints')
 const SOURCE_FONT = path.join(root, 'assets', 'material-symbols-source.ttf')
-const OUT_FONT = path.join(root, 'android', 'src', 'main', 'assets', 'rngui_material_symbols.ttf')
+const OUT_FONT = path.join(
+  root,
+  'android',
+  'src',
+  'main',
+  'assets',
+  'rngui_material_symbols.ttf'
+)
 const OUT_KT = path.join(
   root,
   'android',
@@ -53,7 +66,10 @@ for (const line of readFileSync(CODEPOINTS, 'utf8').split('\n')) {
 }
 
 /** Every Material name the build needs a glyph for. */
-const wanted = new Set([...Object.values(SF_TO_MATERIAL), ...EXTRA_MATERIAL_SYMBOLS])
+const wanted = new Set([
+  ...Object.values(SF_TO_MATERIAL),
+  ...EXTRA_MATERIAL_SYMBOLS,
+])
 
 const unknown = [...wanted].filter((name) => !codepoints.has(name))
 if (unknown.length > 0) {
@@ -68,7 +84,10 @@ if (unknown.length > 0) {
 
 const sfEntries = Object.entries(SF_TO_MATERIAL)
   .sort(([a], [b]) => (a < b ? -1 : 1))
-  .map(([sf, material]) => `    "${sf}" to 0x${codepoints.get(material).toString(16)},`)
+  .map(
+    ([sf, material]) =>
+      `    "${sf}" to 0x${codepoints.get(material).toString(16)},`
+  )
 
 const materialEntries = [...wanted]
   .sort()
@@ -129,7 +148,9 @@ if (!existsSync(SOURCE_FONT)) {
   process.exit(0)
 }
 
-const unicodes = [...wanted].map((name) => codepoints.get(name).toString(16)).join(',')
+const unicodes = [...wanted]
+  .map((name) => codepoints.get(name).toString(16))
+  .join(',')
 
 mkdirSync(path.dirname(OUT_FONT), { recursive: true })
 execFileSync(

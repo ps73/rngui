@@ -155,8 +155,12 @@ export const Checkmark = tagged<Record<string, never>>(
 )
 
 export interface IconProps {
-  /** SF Symbol name, e.g. `calendar` or `clock`. */
-  systemImage: string
+  /**
+   * SF Symbol name, e.g. `calendar` or `clock`.
+   *
+   * Optional only so `monogram` can stand alone. An icon with neither draws nothing.
+   */
+  systemImage?: string
   /**
    * The Android glyph, named directly.
    *
@@ -169,14 +173,24 @@ export interface IconProps {
   /** Overrides the glyph colour. Defaults to the row's tint. */
   color?: string
   /**
-   * Draws the glyph white on a rounded tile of this colour — the Settings look.
+   * Draws the glyph white on a filled container of this colour.
    *
-   * Replaces `color` rather than combining with it. Settings reserves colour for the square and
-   * always draws the glyph on it in white, which is what keeps a screen of twenty different hues
-   * legible.
+   * **The shape is the platform's**: Settings' 29pt rounded square on iOS, M3's 40dp circle on
+   * Android. A screen after the Pixel Settings look sets no background at all — Pixel draws a bare
+   * monochrome glyph, and a coloured container there is the iOS screen in disguise.
+   *
+   * Replaces `color` rather than combining with it: colour belongs to the container, and the glyph
+   * on it is always white, which is what keeps a screen of twenty different hues legible.
    */
   background?: string
-  /** The glyph's point size. Ignored when `background` is set — the tile decides its own. */
+  /**
+   * One or two letters instead of a glyph — a contact's initials, in the same container.
+   *
+   * Needs `background`; letters with nothing behind them read as a layout bug rather than as an
+   * avatar. Wins over `systemImage` and `materialSymbol`, and native truncates to two characters.
+   */
+  monogram?: string
+  /** The glyph's point size. Ignored when `background` is set — the container decides its own. */
   size?: number
 }
 

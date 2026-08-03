@@ -23,6 +23,7 @@
           "materialSymbol": "Tree.sections[0].rows[0].materialSymbol",
           "imageColor": "Tree.sections[0].rows[0].imageColor",
           "imageBackground": "Tree.sections[0].rows[0].imageBackground",
+          "imageMonogram": "Tree.sections[0].rows[0].imageMonogram",
           "imageSize": 11,
           "badge": "Tree.sections[0].rows[0].badge",
           "badgeColor": "Tree.sections[0].rows[0].badgeColor",

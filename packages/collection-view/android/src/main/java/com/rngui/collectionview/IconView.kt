@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.Typeface
 import android.util.Log
 import android.view.View
@@ -31,12 +30,16 @@ class IconView(context: Context) : View(context) {
   private val tilePaint = Paint(Paint.ANTI_ALIAS_FLAG)
 
   private var codepoint: Int? = null
+
+  /** The letters drawn instead of a glyph, already truncated. Null unless this is an avatar. */
+  private var monogram: String? = null
+
   private var tileColor: Int? = null
   private var glyphSizePx = 0f
 
   /** Nothing to draw. The row hides this rather than leaving a gap the width of an icon. */
   val isEmpty: Boolean
-    get() = codepoint == null
+    get() = codepoint == null && monogram == null
 
   /**
    * Fully specifies the icon, or reports that there is none.
@@ -44,19 +47,23 @@ class IconView(context: Context) : View(context) {
    * @return false when the row has no icon, or names one this build cannot draw.
    */
   fun bind(row: RowSpec, style: RowStyle): Boolean {
-    codepoint = resolve(row)
-    if (codepoint == null) {
+    tileColor = parseRnguiHex(row.imageBackground)
+    monogram = resolveMonogram(row)
+    codepoint = if (monogram != null) null else resolve(row)
+
+    if (codepoint == null && monogram == null) {
       visibility = GONE
       return false
     }
 
-    tileColor = parseRnguiHex(row.imageBackground)
     val tinted = parseRnguiHex(row.imageColor)
 
-    glyphPaint.typeface = typeface(context)
+    // The face is the icon font for a glyph and the system's own for letters — Material Symbols
+    // carries no Latin alphabet, so a monogram set in it would render two blanks.
+    glyphPaint.typeface = if (monogram != null) MONOGRAM_TYPEFACE else typeface(context)
     glyphPaint.color =
       when {
-        // On a tile the glyph is always white, because the tile carries the colour.
+        // In a container the content is always white, because the container carries the colour.
         tileColor != null -> Color.WHITE
         tinted != null -> tinted
         else -> style.tintColor
@@ -64,13 +71,39 @@ class IconView(context: Context) : View(context) {
 
     val requested = row.imageSize?.toFloat() ?: DEFAULT_GLYPH_DP
     glyphSizePx =
-      if (tileColor != null) context.dp(TILE_GLYPH_DP).toFloat()
-      else context.dp(requested).toFloat()
+      when {
+        monogram != null -> context.dp(MONOGRAM_DP).toFloat()
+        tileColor != null -> context.dp(TILE_GLYPH_DP).toFloat()
+        else -> context.dp(requested).toFloat()
+      }
     glyphPaint.textSize = glyphSizePx
     tileColor?.let { tilePaint.color = it }
 
     visibility = VISIBLE
     return true
+  }
+
+  /**
+   * The letters to draw, or null if this row is not an avatar.
+   *
+   * Refused without a container, and loudly. Two letters floating where an icon belongs looks like
+   * a label that lost its row rather than like an avatar, so the failure has to be reportable —
+   * silently drawing them would send someone hunting through their layout.
+   */
+  private fun resolveMonogram(row: RowSpec): String? {
+    val raw = row.imageMonogram?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (tileColor == null) {
+      warnOnce(
+        "monogram-without-background",
+        "[@rngui/collection-view] a monogram needs `background` to sit in — letters with nothing " +
+          "behind them are not an avatar. That row's icon renders nothing.",
+      )
+      return null
+    }
+    // By code point rather than by `char`, so an initial outside the BMP counts as one letter
+    // instead of being cut in half into two replacement glyphs.
+    val available = raw.codePointCount(0, raw.length)
+    return raw.substring(0, raw.offsetByCodePoints(0, minOf(MONOGRAM_MAX, available)))
   }
 
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -81,20 +114,13 @@ class IconView(context: Context) : View(context) {
   }
 
   override fun onDraw(canvas: Canvas) {
-    val point = codepoint ?: return
-
     tileColor?.let {
-      val radius = context.dp(TILE_RADIUS_DP).toFloat()
-      canvas.drawRoundRect(
-        RectF(0f, 0f, width.toFloat(), height.toFloat()),
-        radius,
-        radius,
-        tilePaint,
-      )
+      canvas.drawCircle(width / 2f, height / 2f, width / 2f, tilePaint)
     }
 
+    val content = monogram ?: codepoint?.let { String(Character.toChars(it)) } ?: return
     val baseline = height / 2f - (glyphPaint.descent() + glyphPaint.ascent()) / 2f
-    canvas.drawText(String(Character.toChars(point)), width / 2f, baseline, glyphPaint)
+    canvas.drawText(content, width / 2f, baseline, glyphPaint)
   }
 
   /**
@@ -128,9 +154,31 @@ class IconView(context: Context) : View(context) {
 
   companion object {
     private const val DEFAULT_GLYPH_DP = 22f
-    private const val TILE_SIZE_DP = 29
-    private const val TILE_GLYPH_DP = 18
-    private const val TILE_RADIUS_DP = 7
+
+    /**
+     * M3's leading avatar: a 40dp **circle** with a 24dp glyph in it.
+     *
+     * **Not iOS's 29pt rounded square, and this is one of the differences worth being deliberate
+     * about.** A squircle tile with a white glyph is the Settings look, and it is the Settings look
+     * *because Apple invented it there* — Android has never had one. M3's leading element in a list
+     * item is either a bare icon or a circular avatar, so `imageBackground` resolves to the circle
+     * here and to the tile on iOS. Same prop, same meaning ("give this icon the platform's own
+     * container"), two shapes, which is the whole argument this package makes.
+     *
+     * A consequence worth stating: a Settings-style screen that sets `imageBackground` on twenty
+     * rows gets twenty coloured circles on Android. That is not a bug, it is what the prop means —
+     * and a screen that wants Pixel Settings should set no background at all and let the bare
+     * monochrome glyph through, which is what Pixel Settings actually draws.
+     */
+    private const val TILE_SIZE_DP = 40
+    private const val TILE_GLYPH_DP = 24
+
+    /** Letters read larger than a glyph at the same nominal size, so they are set smaller. */
+    private const val MONOGRAM_DP = 16
+    private const val MONOGRAM_MAX = 2
+
+    /** M3 sets an avatar's initials in the medium weight, against the label's regular. */
+    private val MONOGRAM_TYPEFACE: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
 
     private var cached: Typeface? = null
     private val warned = HashSet<String>()

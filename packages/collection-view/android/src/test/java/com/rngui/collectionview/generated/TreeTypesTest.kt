@@ -56,6 +56,7 @@ class TreeTypesTest {
     assertEquals("Tree.sections[0].rows[0].materialSymbol", decoded.sections.get(0).rows.get(0).materialSymbol)
     assertEquals("Tree.sections[0].rows[0].imageColor", decoded.sections.get(0).rows.get(0).imageColor)
     assertEquals("Tree.sections[0].rows[0].imageBackground", decoded.sections.get(0).rows.get(0).imageBackground)
+    assertEquals("Tree.sections[0].rows[0].imageMonogram", decoded.sections.get(0).rows.get(0).imageMonogram)
     assertEquals(11.0, decoded.sections.get(0).rows.get(0).imageSize)
     assertEquals("Tree.sections[0].rows[0].badge", decoded.sections.get(0).rows.get(0).badge)
     assertEquals("Tree.sections[0].rows[0].badgeColor", decoded.sections.get(0).rows.get(0).badgeColor)

@@ -724,6 +724,24 @@ public final class RNGUICollectionViewHost: NSObject {
    * specified — and this function is one refactor away from being handed a reused configuration.
    */
   private func applyImage(_ row: RowSpec, to content: inout UIListContentConfiguration) {
+    // A monogram avatar: initials rather than a glyph, in the same container. Checked before the
+    // symbol because it wins over one, and it needs a container for the same reason Android says
+    // so — two letters floating where an icon belongs read as a label that lost its row.
+    if let letters = monogramLetters(row) {
+      guard let hex = row.imageBackground, let background = UIColor(rnguiHex: hex) else {
+        Self.warnOnce(
+          "monogram-without-background",
+          "[@rngui/collection-view] a monogram needs `background` to sit in — letters with "
+            + "nothing behind them are not an avatar. That row's icon renders nothing."
+        )
+        content.image = nil
+        return
+      }
+      content.image = IconTile.image(monogram: letters, background: background)
+      applyTileMetrics(to: &content)
+      return
+    }
+
     guard let name = row.systemImage else {
       content.image = nil
       return
@@ -735,18 +753,7 @@ public final class RNGUICollectionViewHost: NSObject {
     if let hex = row.imageBackground, let background = UIColor(rnguiHex: hex) {
       let tile = IconTile.image(symbol: name, background: background)
       content.image = tile
-      // Reserved so that rows *without* a tile still align their text with the ones that have it.
-      // A Settings section where one row's label starts 29pt further left than its neighbours is
-      // the giveaway that this was assembled rather than laid out.
-      content.imageProperties.reservedLayoutSize = CGSize(
-        width: IconTile.edge,
-        height: IconTile.edge
-      )
-      content.imageProperties.maximumSize = CGSize(
-        width: IconTile.edge,
-        height: IconTile.edge
-      )
-      content.imageProperties.tintColor = nil
+      applyTileMetrics(to: &content)
       return
     }
 
@@ -779,6 +786,50 @@ public final class RNGUICollectionViewHost: NSObject {
     // handed down from a `color` prop cannot (that value crosses as one static colour).
     content.imageProperties.tintColor =
       row.imageColor.flatMap { UIColor(rnguiHex: $0) } ?? .secondaryLabel
+  }
+
+  /**
+   * The size a filled container claims, whether it holds a glyph or initials.
+   *
+   * Reserved so that rows *without* one still align their text with the rows that have it. A
+   * Settings section where one row's label starts 29pt further left than its neighbours is the
+   * giveaway that the screen was assembled rather than laid out.
+   */
+  private func applyTileMetrics(to content: inout UIListContentConfiguration) {
+    let size = CGSize(width: IconTile.edge, height: IconTile.edge)
+    content.imageProperties.reservedLayoutSize = size
+    content.imageProperties.maximumSize = size
+    content.imageProperties.tintColor = nil
+  }
+
+  /**
+   * The initials to draw, trimmed and cut to two.
+   *
+   * `prefix` over `String`, so the two are two *grapheme clusters* — an initial with a combining
+   * accent stays one letter rather than being split into a base and a floating diacritic.
+   */
+  private func monogramLetters(_ row: RowSpec) -> String? {
+    guard
+      let raw = row.imageMonogram?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !raw.isEmpty
+    else { return nil }
+    return String(raw.prefix(2))
+  }
+
+  /**
+   * Once per message per process, and debug-only.
+   *
+   * `applyImage` runs on every cell configure, so printing unconditionally would be one line per
+   * row per scroll — thousands of them, for the single condition it exists to make visible.
+   * Android's `warnOnce` is the same guard for the same reason.
+   */
+  private static var warned: Set<String> = []
+
+  private static func warnOnce(_ key: String, _ message: String) {
+    #if DEBUG
+    guard warned.insert(key).inserted else { return }
+    print(message)
+    #endif
   }
 
   /// Tints `secondaryLabel` when the row asked for it — the "Today" / "15:00" under a Date row.
