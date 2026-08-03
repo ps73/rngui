@@ -1,6 +1,9 @@
 package com.rngui.collectionview
 
+import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.view.MotionEvent
+import kotlin.math.abs
 import android.widget.FrameLayout
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
@@ -293,6 +296,106 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   private var keyboardAware: Boolean = false
 
   var keyboardAwareOffset: Int = 0
+
+  // -- gesture interop with react-native-gesture-handler -----------------------------------------
+  //
+  // **This is the Android analogue of the iOS `RCTScrollViewComponentView` problem, and unlike iOS
+  // it has an answer.** `@gorhom/bottom-sheet` wraps the scrollable in a `GestureDetector` carrying
+  // a `Gesture.Native()`, and RNGH's `NativeViewGestureHandler` decides whether to activate with
+  // exactly one line:
+  //
+  //     tryIntercept(view, event) = view is ViewGroup && view.onInterceptTouchEvent(event)
+  //
+  // The view it asks is this one. A `FrameLayout` never intercepts, so the handler never activated,
+  // the sheet kept the whole gesture, and the list neither scrolled nor emitted a single scroll
+  // event. Forwarding `canScrollVertically` was necessary — RNGH and the touch dispatcher must
+  // agree — but nothing ever asked it.
+  //
+  // So this answers the probe. What it must *not* do is answer it during ordinary dispatch:
+  // `onInterceptTouchEvent` is called there too, and returning true would take the touch away from
+  // the `RecyclerView` entirely — the list would stop scrolling in every context, sheet or no
+  // sheet. The two callers are told apart by which one is on the stack.
+
+  private var inDispatch = false
+  private var probeDownX = 0f
+  private var probeDownY = 0f
+  private val touchSlop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    inDispatch = true
+    try {
+      return super.dispatchTouchEvent(event)
+    } finally {
+      inDispatch = false
+    }
+  }
+
+  override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+    // The ordinary path. Never steal: the children — the list, and the scrubber above it — are
+    // perfectly capable of claiming their own touches, and that is how every other screen works.
+    if (inDispatch) return super.onInterceptTouchEvent(event)
+    return wouldScroll(event)
+  }
+
+  /**
+   * Hands RNGH's touches to the list, because they arrive by a route children never see.
+   *
+   * Once `NativeViewGestureHandler` activates it drives the view itself:
+   *
+   *     fun sendTouchEvent(view: View?, event: MotionEvent) = view?.onTouchEvent(event)
+   *
+   * For a `ReactScrollView` that works, because the view it was handed *is* the scroller. Here the
+   * scroller is a child, and `onTouchEvent` on a parent never reaches one — children are reached
+   * through `dispatchTouchEvent`. So the handler activated, took the gesture off the sheet, and
+   * then delivered every move to a `FrameLayout` that had nothing to do with it: the list did not
+   * scroll and no scroll events were emitted, which is exactly the symptom with none of the causes
+   * anyone would guess.
+   *
+   * Guarded by the same flag as the interception probe. In ordinary dispatch this is only reached
+   * when no child claimed the touch, and forwarding it then would hand the list an event it has
+   * already declined.
+   *
+   * The list fills this view at the origin, so the event needs no translation.
+   */
+  @SuppressLint("ClickableViewAccessibility")
+  override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (inDispatch) return super.onTouchEvent(event)
+    return list.onTouchEvent(event)
+  }
+
+  /**
+   * Whether a drag this far in this direction would actually scroll the list.
+   *
+   * Deliberately *not* `list.onInterceptTouchEvent(event)`. That would answer perfectly and drive
+   * the `RecyclerView`'s own scroll-detection state machine a second time for the same event, since
+   * ordinary dispatch is about to hand it the very same one. Slop and direction are enough, and
+   * they are side-effect free.
+   *
+   * Deltas rather than absolute coordinates, because RNGH reports the event in the root view's
+   * space rather than in ours — a delta is the same in both.
+   *
+   * `canScrollVertically` runs through `LockableLayoutManager`, so `scrollEnabled = false` answers
+   * "no" here as well. That is the whole handshake: while the sheet owns the drag it has locked the
+   * list, this reports that the list would not scroll, the handler stays inactive, and the sheet
+   * keeps the gesture. The moment gorhom unlocks, the same question starts answering "yes".
+   */
+  private fun wouldScroll(event: MotionEvent): Boolean =
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> {
+        probeDownX = event.x
+        probeDownY = event.y
+        false
+      }
+      MotionEvent.ACTION_MOVE -> {
+        val dy = event.y - probeDownY
+        val dx = event.x - probeDownX
+        // A mostly-horizontal drag belongs to a chip strip or a swipe action, never to the sheet.
+        if (abs(dy) < touchSlop || abs(dy) <= abs(dx)) false
+        // Dragging up scrolls the content down, and vice versa.
+        else list.canScrollVertically(if (dy < 0) 1 else -1)
+      }
+      else -> false
+    }
 
   /**
    * Answers for the list inside, because that is the view everything else asks about.
