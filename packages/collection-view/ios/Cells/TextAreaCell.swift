@@ -142,7 +142,9 @@ final class TextAreaCell: UICollectionViewListCell, UITextViewDelegate {
   /// See `TextFieldCell.applyText` for why an echo has to be recognised rather than applied.
   private func applyText(_ next: String) {
     if textView.isFirstResponder, let index = pendingEchoes.firstIndex(of: next) {
-      pendingEchoes.removeFirst(index + 1)
+      // `index`, not `index + 1` — the matched value has to survive a second delivery. See
+      // `TextFieldCell.applyText`.
+      pendingEchoes.removeFirst(index)
       return
     }
     pendingEchoes.removeAll()

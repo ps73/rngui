@@ -441,10 +441,10 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         // Everything *older* than this value is now accounted for and can go — a commit never
         // arrives out of order, so those will not be echoed again.
         //
-        // **The matched value itself stays**, and that is the difference from the iOS cell this is
-        // otherwise a port of. A `RecyclerView` rebinds a row for reasons that have nothing to do
-        // with its content, so the same tree value reaches this method more than once; consuming it
-        // on the first pass makes the second a miss, and a miss writes. Instrumented, that read:
+        // **The matched value itself stays.** A `RecyclerView` rebinds a row for reasons that have
+        // nothing to do with its content, so the same tree value reaches this method more than
+        // once; consuming it on the first pass makes the second a miss, and a miss writes.
+        // Instrumented, that read:
         //
         //     apply next='Rehear' have='Re'                → MISS, applied
         //     …eleven keystrokes later…
