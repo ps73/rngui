@@ -289,20 +289,52 @@ root project's classpath.
 | `decelerationRate`               | `0` suppresses the fling exactly; other values approximate through fling velocity           |
 | `scrollTo`                       | `scrollToPosition(0)` for the `(0, 0)` case, which is exact                                 |
 
+### Material 3
+
+The Android side follows [the M3 list spec](https://m3.material.io/components/lists/specs) rather
+than translating the iOS look. Concretely:
+
+- Every default colour is an **M3 colour role** — `surface`, `surfaceContainer`, `onSurface`,
+  `onSurfaceVariant`, `outlineVariant`, `primary`, `secondaryContainer` — resolved from the app's
+  Material theme, so an unthemed list inherits dynamic colour on Android 12+. Anything set in
+  `appearance` still wins.
+- Selection controls are the real components: `MaterialSwitch`, `MaterialCheckBox`,
+  `MaterialRadioButton`. The row owns the tap; the control displays state.
+- Items are 56dp minimum with 16dp horizontal padding.
+- A **selected** item — a checked checkbox or radio — takes `secondaryContainer` and a larger corner
+  radius. The shape changing is the point; colour alone is not how M3 signals selection.
+
+`androidListStyle` picks between the two arrangements the spec defines:
+
+|            | `standard`                   | `segmented`              |
+| ---------- | ---------------------------- | ------------------------ |
+| Items      | flush                        | own container, 4dp gap   |
+| Separators | dividers                     | none — the gaps separate |
+| Corners    | square, or grouped-card ends | uniformly rounded        |
+
+Unset follows `listAppearance`: `segmented` for `insetGrouped` and `grouped`, `standard` for
+`plain`. It is ignored on iOS, where the shape comes from `listAppearance` alone.
+
+The library brings `com.google.android.material` and themes its own context with
+`Theme.Material3.DayNight`. That is not optional — Material widgets read theme attributes at
+construction and crash without them — and supplying it here rather than requiring one of the
+consuming app is what keeps this a library you install rather than one you configure.
+
 ### Platform differences
 
 Decisions, not gaps. Each one is the platform's own idiom rather than the other's.
 
-| Concept                     | iOS                                   | Android                                                                                                                                                |
-| --------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `insetGrouped`              | `UICollectionLayoutListConfiguration` | M3 grouped cards, with a ripple masked to the card's shape                                                                                             |
-| `plain` + pinned headers    | free from compositional layout        | a hand-written `ItemDecoration`, with push-off                                                                                                         |
-| `systemImage`               | SF Symbols                            | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
-| Section index               | an A–Z rail                           | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
-| Swipe actions               | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
-| `datePickerStyle: 'wheels'` | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
-| Overscroll                  | rubber-band bounce                    | stretch or glow                                                                                                                                        |
-| `contentSize.height`        | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
+| Concept                         | iOS                                   | Android                                                                                                                                                |
+| ------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `insetGrouped`                  | `UICollectionLayoutListConfiguration` | M3 containers — `segmented` by default, see `androidListStyle`                                                                                         |
+| `plain` + pinned headers        | free from compositional layout        | a hand-written `ItemDecoration`, with push-off                                                                                                         |
+| `systemImage`                   | SF Symbols                            | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
+| Section index                   | an A–Z rail                           | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
+| Swipe actions                   | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
+| `datePickerStyle: 'wheels'`     | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
+| `datePickerMode: 'dateAndTime'` | one combined wheel                    | two dialogs, chained — Material has no combined picker                                                                                                 |
+| Overscroll                      | rubber-band bounce                    | stretch or glow                                                                                                                                        |
+| `contentSize.height`            | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
 
 `contentOffset.y` is **exact on both**. On Android it is accumulated from `onScrolled`'s `dy` rather
 than read from `computeVerticalScrollOffset()`, which is an average-item-height estimate that does
