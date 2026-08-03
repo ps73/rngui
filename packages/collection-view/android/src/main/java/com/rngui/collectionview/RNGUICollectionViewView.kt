@@ -539,6 +539,36 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     restyle()
   }
 
+  /**
+   * Catches the mode change this view was not in the tree to hear.
+   *
+   * **`onConfigurationChanged` is dispatched down the attached hierarchy, and only that.** Android
+   * walks from the decor view and stops at whatever is not currently in it — and
+   * `react-native-screens` detaches the screens that are not on top, which is every tab except the
+   * one being looked at. So the visible screen restyles, the others never learn the mode moved, and
+   * nothing replays the callback when they come back: a tab visited before the flip returns still
+   * drawing the old palette, against a header and tab bar that have already changed. That was the
+   * bug, and it looks like a screen that "didn't get the message" because it is exactly that.
+   *
+   * Attach is where a screen rejoins the hierarchy, so attach is where it has to ask. Gated on the
+   * resolved mode rather than on the configuration as a whole: a rotation reattaches too, and
+   * rebinding every visible row for it would be work for nothing.
+   */
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    // Current by now, unlike inside `onConfigurationChanged` — see the note on `configuration`.
+    // Attach happens on its own message, long after the resources have been updated.
+    val current = resources.configuration
+    if (
+      AppearanceResolver.isDark(current, appliedColorScheme) ==
+        AppearanceResolver.isDark(configuration, appliedColorScheme)
+    ) {
+      return
+    }
+    configuration = Configuration(current)
+    restyle()
+  }
+
   private fun restyle() {
     val resolver = resolver()
     val list = listStyle()
