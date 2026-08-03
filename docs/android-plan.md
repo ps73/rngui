@@ -13,31 +13,38 @@ on, and it settles them by measurement rather than by argument.
 
 ## Status
 
-Eleven of twelve milestones are done and verified on a Pixel 10 emulator (API 37). What remains is
-listed honestly rather than rounded up.
+All twelve milestones are done and verified on a Pixel 10 emulator (API 37). What is still missing
+within them is listed honestly rather than rounded up.
 
-| Milestone                         | State                                                              |
-| --------------------------------- | ------------------------------------------------------------------ |
-| M1 Foundations + decisions        | Done. Both settled by measurement; results below                   |
-| M2 Generated Kotlin model         | Done. Shares its fixture with the Swift test                       |
-| M3 Scroll shell + first rows      | Done                                                               |
-| M4 Grouping, shape, separators    | Done. Ripple clipping verified by pixel measurement                |
-| M5 Sticky headers + scrubber      | Done                                                               |
-| M6 Typography + icons             | Done. Ink-coverage instrument passes                               |
-| M7 Controls                       | Done. Recycling emits zero spurious events, proven by mutation     |
-| M8 Host rows                      | Done. Ownership guard proven by mutation                           |
-| M9 Chips + swipe actions          | Done                                                               |
-| M10 Insets, keyboard, scroll      | Done, except the focus-following half of `keyboardAware`           |
-| M11 Bottom sheet                  | **Partial.** Renders and drags; the list does not scroll inside it |
-| M12 Example parity, docs, release | Docs and the publish dry-run done; device matrix not run           |
+| Milestone                         | State                                                          |
+| --------------------------------- | -------------------------------------------------------------- |
+| M1 Foundations + decisions        | Done. Both settled by measurement; results below               |
+| M2 Generated Kotlin model         | Done. Shares its fixture with the Swift test                   |
+| M3 Scroll shell + first rows      | Done                                                           |
+| M4 Grouping, shape, separators    | Done. Ripple clipping verified by pixel measurement            |
+| M5 Sticky headers + scrubber      | Done                                                           |
+| M6 Typography + icons             | Done. Ink-coverage instrument passes                           |
+| M7 Controls                       | Done. Recycling emits zero spurious events, proven by mutation |
+| M8 Host rows                      | Done. Ownership guard proven by mutation                       |
+| M9 Chips + swipe actions          | Done                                                           |
+| M10 Insets, keyboard, scroll      | Done, except the focus-following half of `keyboardAware`       |
+| M11 Bottom sheet                  | Done. Scrolls, hands the drag back, zero direction reversals   |
+| M12 Example parity, docs, release | Done, except the four-device matrix                            |
 
-**M11 is the one that is not working.** `react-native-gesture-handler` asks the attached view
-whether it scrolls, and the attached view is this component's `FrameLayout` wrapper rather than the
-`RecyclerView` inside it. Forwarding `canScrollVertically` was necessary and not sufficient; the
-next step is to find out whether the touch reaches the list at all, and if not, whether the
-fallback the risk register prescribes — `scrollEnabled` from `animatedScrollableStatus`, which the
-shared bottom-sheet entry point already implements — is reaching native. The jank-frame instrument
-is not built, because it would measure a gesture that does not yet work.
+**M11 took two bugs in the same seam.** RNGH's `NativeViewGestureHandler` decides whether to
+activate with `view is ViewGroup && view.onInterceptTouchEvent(event)`, and the view it asks is this
+component's `FrameLayout` wrapper rather than the `RecyclerView` inside — a `FrameLayout` never
+intercepts, so the sheet kept the whole gesture. Once that was answered, RNGH drove the view with
+`view.onTouchEvent(event)`, which on a wrapper never reaches the child. Both are forwarded now, each
+guarded so ordinary dispatch is untouched.
+
+The plan guessed right for the wrong reason: it expected RNGH to compose because `RecyclerView`
+reports `canScrollVertically`, which is true and was irrelevant, because nothing was asking the
+`RecyclerView`. What made this fixable where iOS was not is that RNGH asks the _view_ rather than
+checking its class — on iOS the equivalent is one hard `isKindOfClass:` with no extension point.
+
+The jank-frame instrument the plan proposed as a replacement for the iOS reversal counter is not
+built: the counter itself reads clean here, so there is no judder to measure.
 
 **Not done in M12:** the device matrix (one API 24 device, one API 31, one current, one low-RAM).
 Only a single emulator was available, so "it works on a Pixel 10 emulator" is the whole of the
