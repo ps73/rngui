@@ -71,12 +71,12 @@ second source of truth to disagree with the children.
 | `Description` | Second line. `tinted` draws it in the tint colour rather than grey |
 | `Value`       | Trailing detail text                                               |
 
-| Accessories                         |                                                  |
-| ----------------------------------- | ------------------------------------------------ |
-| `Icon`                              | `systemImage` · `color` · `background` · `size`  |
-| `Badge`                             | `color` — the red count bubble, text as children |
-| `Chevron` · `Checkmark` · `Spinner` |                                                  |
-| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`           |
+| Accessories                         |                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| `Icon`                              | `systemImage` · `materialSymbol` · `monogram` · `color` · `background` · `size` |
+| `Badge`                             | `color` — the red count bubble, text as children                                |
+| `Chevron` · `Checkmark` · `Spinner` |                                                                                 |
+| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`                                          |
 
 | Controls     |                                                                                                                                           |
 | ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
@@ -95,10 +95,12 @@ second source of truth to disagree with the children.
 | `SwipeAction`  | `id` · `title` · `systemImage` · `style` · `backgroundColor` · `onPress` |
 
 An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
-glyph reads as an interactive control. Give it a `background` and it becomes Settings' rounded
-coloured tile instead: a white glyph on a 29pt continuous-corner square, rendered once per
-symbol-and-colour and cached, with the layout width reserved so untiled rows in the same section
-still line up. A `size` reserves its width the same way, which is what keeps a large glyph from
+glyph reads as an interactive control. Give it a `background` and it becomes the platform's own
+icon container instead — Settings' 29pt continuous-corner square on iOS, M3's 40dp circle on
+Android — rendered once per symbol-and-colour and cached, with the layout width reserved so
+untiled rows in the same section still line up. `monogram` puts one or two letters in that
+container rather than a glyph, which is the avatar an address book falls back to; that one is a
+circle on both, because an avatar always has been. A `size` reserves its width the same way, which is what keeps a large glyph from
 eating the row's leading margin.
 
 A `Badge` takes its text as children rather than a number, because iOS puts version strings and a
@@ -337,6 +339,8 @@ Decisions, not gaps. Each one is the platform's own idiom rather than the other'
 | `Slider`                        | `UISlider` — thin track, capsule knob | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |
 | `Slider` `step`                 | enforced, but not drawn               | enforced **and drawn**, as tick marks. `UISlider` has never had them                                                                                   |
 | `Slider` min/max images         | `minimumValueImage` slots             | icon views laid out either side; Material's slider has no such property                                                                                |
+| `Icon` `background`             | Settings' 29pt rounded square         | M3's 40dp circle. The tile is Apple's — Android's leading element is a bare icon or a round avatar                                                     |
+| `Icon` `monogram`               | initials on a circle                  | the same, and the one case where the container shape does **not** differ: an avatar is round on both                                                   |
 | Overscroll                      | rubber-band bounce                    | stretch or glow                                                                                                                                        |
 | `contentSize.height`            | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
 
