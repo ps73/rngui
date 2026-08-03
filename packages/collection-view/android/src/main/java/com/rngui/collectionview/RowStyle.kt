@@ -5,21 +5,28 @@ import androidx.annotation.ColorInt
 import com.rngui.collectionview.generated.FontSpec
 
 /**
- * The resolved appearance a row binds against.
+ * The colours and type a row binds against, resolved once per tree.
  *
- * Computed once per tree rather than per row — every field is a property of the list, and
- * resolving a theme attribute is a `TypedValue` lookup that has no business happening 2,000 times
- * during a fling.
+ * Every default is a **Material 3 colour role** rather than a transliterated iOS colour, so an
+ * unthemed list follows the consuming app's Material theme — dynamic colour included — instead of
+ * looking like an iOS list running on the wrong phone. Anything set in `appearance` still wins.
+ *
+ * Resolved once per tree rather than per row: a token lookup is a `TypedValue` resolution, and it
+ * has no business happening 2,000 times during a fling. The literal fallbacks are the M3 baseline
+ * palette, used only when the themed context somehow carries no Material theme at all.
  */
 data class RowStyle(
-  val labelColor: Int,
-  val secondaryColor: Int,
-  val tintColor: Int,
-  val disabledColor: Int,
-  val rowBackground: Int?,
-  val separatorColor: Int,
-  val headerTextColor: Int,
-  val footerTextColor: Int,
+  @ColorInt val labelColor: Int,
+  @ColorInt val secondaryColor: Int,
+  @ColorInt val tintColor: Int,
+  @ColorInt val disabledColor: Int,
+  @ColorInt val rowBackground: Int?,
+  @ColorInt val separatorColor: Int,
+  @ColorInt val headerTextColor: Int,
+  @ColorInt val footerTextColor: Int,
+  /** `secondaryContainer` — what M3 puts behind a selected list item. */
+  @ColorInt val selectedContainer: Int,
+  @ColorInt val onSelectedContainer: Int,
   val labelTypeface: Typeface?,
   /** The list's default font. A row's own `font` falls back to this field by field. */
   val font: FontSpec?,
@@ -29,42 +36,56 @@ data class RowStyle(
   companion object {
     fun of(resolver: AppearanceResolver): RowStyle {
       val dark = resolver.isDark
+      val onSurface = if (dark) 0xFFE6E0E9.toInt() else 0xFF1D1B20.toInt()
       val secondary =
         resolver.color(
           { it.secondaryLabelColor },
-          if (dark) SECONDARY_LABEL_DARK else SECONDARY_LABEL_LIGHT,
+          AppearanceResolver.COLOR_ON_SURFACE_VARIANT,
+          if (dark) 0xFFCAC4D0.toInt() else 0xFF49454F.toInt(),
         )
+
       return RowStyle(
-        labelColor = resolver.color({ it.labelColor }, if (dark) LABEL_DARK else LABEL_LIGHT),
+        labelColor = resolver.color({ it.labelColor }, AppearanceResolver.COLOR_ON_SURFACE, onSurface),
         secondaryColor = secondary,
-        tintColor = resolver.color({ it.tintColor }, if (dark) TINT_DARK else TINT_LIGHT),
-        // Not a themed field of its own: "disabled" is the platform's own treatment of whatever
-        // the label colour happens to be, so deriving it keeps a themed list coherent.
-        disabledColor = secondary,
+        tintColor =
+          resolver.color(
+            { it.tintColor },
+            AppearanceResolver.COLOR_PRIMARY,
+            if (dark) 0xFFD0BCFF.toInt() else 0xFF6750A4.toInt(),
+          ),
+        // Not a themed field of its own: "disabled" is the platform's treatment of whatever the
+        // label colour happens to be, and M3 specifies it as 38% of `onSurface`.
+        disabledColor =
+          (resolver.token(AppearanceResolver.COLOR_ON_SURFACE, onSurface) and 0x00FFFFFF) or
+            (0x61 shl 24),
         rowBackground = resolver.optionalColor { it.rowBackground },
         separatorColor =
-          resolver.color({ it.separator }, if (dark) SEPARATOR_DARK else SEPARATOR_LIGHT),
-        headerTextColor = resolver.color({ it.headerTextColor }, secondary),
-        footerTextColor = resolver.color({ it.footerTextColor }, secondary),
+          resolver.color(
+            { it.separator },
+            AppearanceResolver.COLOR_OUTLINE_VARIANT,
+            if (dark) 0xFF49454F.toInt() else 0xFFCAC4D0.toInt(),
+          ),
+        // M3 draws a list subheader in the primary role, which is what makes a section header read
+        // as structure rather than as faint body text.
+        headerTextColor =
+          resolver.color({ it.headerTextColor }, AppearanceResolver.COLOR_PRIMARY, secondary),
+        footerTextColor =
+          resolver.color({ it.footerTextColor }, AppearanceResolver.COLOR_ON_SURFACE_VARIANT, secondary),
+        selectedContainer =
+          resolver.token(
+            AppearanceResolver.COLOR_SECONDARY_CONTAINER,
+            if (dark) 0xFF4A4458.toInt() else 0xFFE8DEF8.toInt(),
+          ),
+        onSelectedContainer =
+          resolver.token(
+            AppearanceResolver.COLOR_ON_SECONDARY_CONTAINER,
+            if (dark) 0xFFE8DEF8.toInt() else 0xFF1D192B.toInt(),
+          ),
         labelTypeface = null,
         font = resolver.font { it.font },
         headerFont = resolver.font { it.headerFont } ?: resolver.font { it.font },
         footerFont = resolver.font { it.footerFont } ?: resolver.font { it.font },
       )
     }
-
-    // The values `Appearance` falls back to when a field is unset — the Android spelling of the
-    // iOS semantic colours the tree is written against (`label`, `secondaryLabel`, `separator`,
-    // `tintColor`). Constants rather than theme attributes: see `AppearanceResolver.isDark` for
-    // why reading the theme does not work here, and M4 for where the M3 Expressive surface
-    // colours arrive.
-    private const val LABEL_LIGHT = 0xFF000000.toInt()
-    private const val LABEL_DARK = 0xFFFFFFFF.toInt()
-    private const val SECONDARY_LABEL_LIGHT = 0x993C3C43.toInt()
-    private const val SECONDARY_LABEL_DARK = 0x99EBEBF5.toInt()
-    private const val TINT_LIGHT = 0xFF007AFF.toInt()
-    private const val TINT_DARK = 0xFF0A84FF.toInt()
-    private const val SEPARATOR_LIGHT = 0x1F000000
-    private const val SEPARATOR_DARK = 0x1FFFFFFF
   }
 }

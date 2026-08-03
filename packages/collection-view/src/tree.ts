@@ -421,6 +421,23 @@ export interface GradientSpec {
 export type ListAppearance = 'insetGrouped' | 'grouped' | 'plain'
 
 /**
+ * How Material 3 arranges list items on Android. Ignored on iOS.
+ *
+ * The [M3 list spec](https://m3.material.io/components/lists/specs) defines exactly two, and they
+ * are a *visual* choice that does not change a list's behaviour:
+ *
+ * - `standard` — items sit flush against one another on the list surface, separated by dividers
+ *   where a divider is wanted. The default, and what most Android lists are.
+ * - `segmented` — each item is its own rounded container with space between, and a selected item
+ *   takes a larger corner radius and the `secondaryContainer` colour.
+ *
+ * A second field rather than more members on `ListAppearance`, because the two describe different
+ * things: `listAppearance` says how sections are *grouped* and is shared, this says how Android
+ * *draws* the items inside them. Additive, so it is safe under rule 2 above.
+ */
+export type AndroidListStyle = 'standard' | 'segmented'
+
+/**
  * Colour, spacing and typography overrides.
  *
  * Everything is optional and falls back to the platform's own value, so setting one field
@@ -469,6 +486,13 @@ export interface Appearance {
 export interface Tree {
   sections: SectionSpec[]
   listAppearance?: ListAppearance
+  /**
+   * Android's Material 3 list style. Ignored on iOS, where the shape comes from `listAppearance`.
+   *
+   * Defaults to `segmented` for `insetGrouped` and `grouped`, and to `standard` for `plain` —
+   * which is the mapping that makes an unchanged cross-platform screen look right on both.
+   */
+  androidListStyle?: AndroidListStyle
   appearance?: Appearance
   /**
    * Applied when the interface style is dark. Falls back to `appearance` field by field, so

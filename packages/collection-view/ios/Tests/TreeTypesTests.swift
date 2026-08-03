@@ -92,6 +92,7 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.sections[0].rows[0].leadingActions?[0].style, .destructive)
     XCTAssertEqual(decoded.sections[0].rows[0].leadingActions?[0].backgroundColor, "Tree.sections[0].rows[0].leadingActions[0].backgroundColor")
     XCTAssertEqual(decoded.listAppearance, .plain)
+    XCTAssertEqual(decoded.androidListStyle, .segmented)
     XCTAssertEqual(decoded.appearance?.background, "Tree.appearance.background")
     XCTAssertEqual(decoded.appearance?.backgroundGradient?.colors[0], "Tree.appearance.backgroundGradient.colors[0]")
     XCTAssertEqual(decoded.appearance?.backgroundGradient?.locations?[0], 99)

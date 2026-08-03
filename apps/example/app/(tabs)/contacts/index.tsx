@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CollectionView, type VisibleRange } from '@rngui/collection-view'
 import { buildContacts } from '../../../src/data/contacts'
 
@@ -33,7 +33,33 @@ const AVATAR_COLOR = '#8E8E93'
 export default function ContactsScreen() {
   // Built once. The point of this screen is that 2,000 rows cost nothing *after* the first
   // commit, which is only true if the data behind them is not rebuilt on every render.
-  const sections = useMemo(() => buildContacts(CONTACT_COUNT), [])
+  const built = useMemo(() => buildContacts(CONTACT_COUNT), [])
+
+  /**
+   * Deleting is JavaScript's decision, which is the whole point of the swipe demo.
+   *
+   * Native reports the tap and springs the row back; the row leaves on the *next* commit as an
+   * animated diff, so the layout and the data source never disagree about whether it is gone. A
+   * list that removed the row natively would be a list whose native state had to be reconciled
+   * afterwards, which is the bug this design avoids by construction.
+   */
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set())
+
+  const sections = useMemo(() => {
+    if (deleted.size === 0) return built
+    return (
+      built
+        .map((section) => ({
+          ...section,
+          contacts: section.contacts.filter(
+            (contact) => !deleted.has(contact.id)
+          ),
+        }))
+        // A section that loses every contact loses its letter too — including its stop on the
+        // scrubber, which would otherwise scroll to a header with nothing under it.
+        .filter((section) => section.contacts.length > 0)
+    )
+  }, [built, deleted])
 
   const visibleRange = useRef<VisibleRange>({ firstIndex: -1, lastIndex: -1 })
 
@@ -88,6 +114,24 @@ export default function ContactsScreen() {
                 size={38}
               />
               <CollectionView.Label>{contact.name}</CollectionView.Label>
+
+              {/*
+                Swipe-to-delete, which is what a contacts list is *for* on iOS — and on Android is
+                deliberately off-idiom: Material says a swipe means dismiss, and an Android-first
+                design would reach for an overflow menu. Demonstrated on both because the API is
+                shared, and the README says which one is the local idiom.
+              */}
+              <CollectionView.SwipeActions>
+                <CollectionView.SwipeAction
+                  id="delete"
+                  title="Delete"
+                  systemImage="trash"
+                  style="destructive"
+                  onPress={() =>
+                    setDeleted((previous) => new Set(previous).add(contact.id))
+                  }
+                />
+              </CollectionView.SwipeActions>
             </CollectionView.Row>
           ))}
         </CollectionView.Section>

@@ -105,6 +105,7 @@ class TreeTypesTest {
     assertEquals(SwipeActionStyle.destructive, decoded.sections.get(0).rows.get(0).leadingActions?.get(0)?.style)
     assertEquals("Tree.sections[0].rows[0].leadingActions[0].backgroundColor", decoded.sections.get(0).rows.get(0).leadingActions?.get(0)?.backgroundColor)
     assertEquals(ListAppearance.plain, decoded.listAppearance)
+    assertEquals(AndroidListStyle.segmented, decoded.androidListStyle)
     assertEquals("Tree.appearance.background", decoded.appearance?.background)
     assertEquals("Tree.appearance.backgroundGradient.colors[0]", decoded.appearance?.backgroundGradient?.colors?.get(0))
     assertEquals(99.0, decoded.appearance?.backgroundGradient?.locations?.get(0))

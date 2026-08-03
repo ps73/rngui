@@ -269,6 +269,23 @@ enum class ListAppearance(val raw: String) {
 }
 
 /**
+ * Generated from `AndroidListStyle` in tree.ts.
+ */
+enum class AndroidListStyle(val raw: String) {
+  standard("standard"),
+  segmented("segmented"),
+
+  /** A value this binary does not recognise. */
+  unknown("");
+
+  companion object {
+    private val byRaw = entries.associateBy { it.raw }
+
+    fun from(raw: String): AndroidListStyle = byRaw[raw] ?: unknown
+  }
+}
+
+/**
  * One entry in a `menu` row's `UIMenu`.
  */
 data class MenuItemSpec(
@@ -771,6 +788,13 @@ data class Appearance(
 data class Tree(
   val sections: List<SectionSpec> = emptyList(),
   val listAppearance: ListAppearance? = null,
+  /**
+   * Android's Material 3 list style. Ignored on iOS, where the shape comes from `listAppearance`.
+   *
+   * Defaults to `segmented` for `insetGrouped` and `grouped`, and to `standard` for `plain` —
+   * which is the mapping that makes an unchanged cross-platform screen look right on both.
+   */
+  val androidListStyle: AndroidListStyle? = null,
   val appearance: Appearance? = null,
   /**
    * Applied when the interface style is dark. Falls back to `appearance` field by field, so
@@ -800,6 +824,7 @@ data class Tree(
       Tree(
         sections = json.array("sections")?.map { (it as? JSONObject)?.let(SectionSpec::from) ?: SectionSpec() } ?: emptyList(),
         listAppearance = json.string("listAppearance")?.let(ListAppearance::from),
+        androidListStyle = json.string("androidListStyle")?.let(AndroidListStyle::from),
         appearance = json.obj("appearance")?.let(Appearance::from),
         darkAppearance = json.obj("darkAppearance")?.let(Appearance::from),
       )

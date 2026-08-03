@@ -74,12 +74,15 @@ class HostReloadTest {
         parking.addView(child)
       }
 
-      val resolver = AppearanceResolver(isDark = false, light = null, dark = null)
+      val themed = AppearanceResolver.themedContext(activity, isDark = false)
+      val resolver =
+        AppearanceResolver(context = themed, isDark = false, light = null, dark = null)
       val rowStyle = RowStyle.of(resolver)
       adapter =
         CollectionAdapter(
+          themed,
           rowStyle,
-          ListStyle.of(activity, resolver, rowStyle, ListAppearance.plain),
+          ListStyle.of(themed, resolver, rowStyle, ListAppearance.plain, requested = null),
           noEvents,
           parking,
           hostChildAt = { index -> children.getOrNull(index) },

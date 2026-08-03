@@ -74,16 +74,28 @@ class RecycleQuietTest {
     var boundRows = 0
 
     activityRule.scenario.onActivity { activity ->
-      val resolver = AppearanceResolver(isDark = false, light = null, dark = null)
+      // The Material-themed context, exactly as the real view builds it — a `MaterialSwitch`
+      // inflated against anything else crashes in `SwitchCompat.onMeasure`, and this fixture is
+      // four hundred switches.
+      val themed = AppearanceResolver.themedContext(activity, isDark = false)
+      val resolver =
+        AppearanceResolver(context = themed, isDark = false, light = null, dark = null)
       val rowStyle = RowStyle.of(resolver)
       val listStyle =
-        ListStyle.of(activity, resolver, rowStyle, ListAppearance.insetGrouped)
+        ListStyle.of(themed, resolver, rowStyle, ListAppearance.insetGrouped, requested = null)
 
       // No host rows in this fixture, so the parking bay is never read — but the adapter needs
       // one, and handing it a real (empty) bay is more honest than a stub that would hide a
       // regression if this fixture ever grew a host row.
       val adapter =
-        CollectionAdapter(rowStyle, listStyle, events, ParkingView(activity), hostChildAt = { null })
+        CollectionAdapter(
+          themed,
+          rowStyle,
+          listStyle,
+          events,
+          ParkingView(activity),
+          hostChildAt = { null },
+        )
       adapter.submitList(FlattenedTree.of(tree()).items)
 
       list =

@@ -2,62 +2,105 @@ package com.rngui.collectionview
 
 import android.content.Context
 import androidx.annotation.ColorInt
+import com.rngui.collectionview.generated.AndroidListStyle
 import com.rngui.collectionview.generated.ListAppearance
 
 /**
- * The list-wide geometry: what the decoration needs and what shapes a row's card.
+ * The list-wide geometry and Material 3 surface roles.
  *
- * Separate from [RowStyle], which is the per-row colour set. The split follows what consumes each:
- * `RowStyle` is read on every bind and is nothing but colours, while this is read once per draw
- * pass by the decoration and once per bind for the background shape. Resolving both in one place —
- * [of] — keeps them from disagreeing about which mode is in force.
+ * Separate from [RowStyle], which is the per-row colour set, because the two are consumed
+ * differently: `RowStyle` is read on every bind, this is read once per draw pass by the decoration
+ * and once per bind for the container shape. Both are resolved in one place so they cannot disagree
+ * about which mode is in force.
  */
 data class ListStyle(
   val appearance: ListAppearance,
+  /** The M3 arrangement: flush items, or individually contained ones with gaps. */
+  val style: AndroidListStyle,
   val insetPx: Int,
   val sectionSpacingPx: Int,
+  /** The gap between segmented items. Zero in `standard`, where items sit flush. */
+  val itemGapPx: Int,
   @ColorInt val separatorColor: Int,
   val separatorInsetPx: Int,
   val separatorHeightPx: Int,
+  /** `surface` — behind everything. */
   @ColorInt val backgroundColor: Int,
+  /** `surfaceContainer` — the item container in a grouped or segmented list. */
+  @ColorInt val containerColor: Int,
   @ColorInt val rowBackground: Int?,
   @ColorInt val labelColor: Int,
+  @ColorInt val selectedContainer: Int,
 ) {
+  /** Whether items sit in a container at all. `plain` + `standard` is the one case that does not. */
+  val grouped: Boolean
+    get() = appearance != ListAppearance.plain
+
+  /** Dividers belong to `standard` only; a segmented list is separated by its gaps. */
+  val drawsSeparators: Boolean
+    get() = style == AndroidListStyle.standard
+
   companion object {
-    /**
-     * `sectionSpacing` unset keeps the platform's own gap, which for a grouped list is the space a
-     * header sits in and for `plain` is nothing at all.
-     */
-    private const val DEFAULT_SECTION_SPACING_DP = 22
+    /** M3's list subheader leaves this much air above the group it introduces. */
+    private const val DEFAULT_SECTION_SPACING_DP = 16
     private const val PLAIN_SECTION_SPACING_DP = 0
 
-    /** Where a divider starts, measured from the card's leading edge. Lines up under the label. */
+    /** Where a divider starts, measured from the container's leading edge. Under the label. */
     private const val SEPARATOR_INSET_DP = 16
+
+    /**
+     * `segmented` for the grouped appearances, `standard` for `plain`.
+     *
+     * The mapping that makes an unchanged cross-platform screen look right on both: a screen asking
+     * for `insetGrouped` wants distinct containers, which on Android is what segmented means, while
+     * `plain` wants an unbroken run of items, which is standard.
+     */
+    fun defaultStyleFor(appearance: ListAppearance): AndroidListStyle =
+      if (appearance == ListAppearance.plain) AndroidListStyle.standard
+      else AndroidListStyle.segmented
 
     fun of(
       context: Context,
       resolver: AppearanceResolver,
       rowStyle: RowStyle,
       appearance: ListAppearance,
+      requested: AndroidListStyle?,
     ): ListStyle {
+      val style =
+        requested?.takeIf { it != AndroidListStyle.unknown } ?: defaultStyleFor(appearance)
       val grouped = appearance != ListAppearance.plain
+      val dark = resolver.isDark
+
       val spacing =
         resolver.dimension { it.sectionSpacing }?.toInt()
           ?: if (grouped) DEFAULT_SECTION_SPACING_DP else PLAIN_SECTION_SPACING_DP
 
       return ListStyle(
         appearance = appearance,
-        insetPx = context.dp(GroupShape.INSET_DP),
+        style = style,
+        insetPx = if (appearance == ListAppearance.insetGrouped) context.dp(GroupShape.INSET_DP) else 0,
         sectionSpacingPx = context.dp(spacing),
+        itemGapPx =
+          if (style == AndroidListStyle.segmented) context.dp(GroupShape.SEGMENT_GAP_DP) else 0,
         separatorColor = rowStyle.separatorColor,
         separatorInsetPx = context.dp(SEPARATOR_INSET_DP),
         // A hairline, not a dp: on a 3x screen 1dp is three physical pixels and reads as a rule
-        // rather than as a separator. Every platform list draws these at one pixel.
+        // rather than as a divider. Every platform list draws these at one pixel.
         separatorHeightPx = 1,
         backgroundColor =
-          resolver.color({ it.background }, GroupShape.defaultBackground(rowStyle.labelColor)),
+          resolver.color(
+            { it.background },
+            AppearanceResolver.COLOR_SURFACE,
+            if (dark) 0xFF141218.toInt() else 0xFFFEF7FF.toInt(),
+          ),
+        containerColor =
+          resolver.token(
+            AppearanceResolver.COLOR_SURFACE_CONTAINER,
+            if (dark) 0xFF211F26.toInt() else 0xFFF3EDF7.toInt(),
+          ),
         rowBackground = rowStyle.rowBackground,
         labelColor = rowStyle.labelColor,
+        selectedContainer = rowStyle.selectedContainer,
       )
     }
   }

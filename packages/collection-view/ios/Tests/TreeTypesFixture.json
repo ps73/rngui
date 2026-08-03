@@ -87,6 +87,7 @@
     }
   ],
   "listAppearance": "plain",
+  "androidListStyle": "segmented",
   "appearance": {
     "background": "Tree.appearance.background",
     "backgroundGradient": {

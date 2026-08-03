@@ -92,6 +92,20 @@ sealed class Item {
 }
 
 /**
+ * Whether M3 should draw this row as a *selected* list item.
+ *
+ * True for a checked `checkbox` or `radio` accessory, which is what the
+ * [M3 list guidance](https://m3.material.io/components/lists/guidelines) means by a selected item —
+ * a `checkmark` is a static tick rather than a selection control, and a `switch` toggles a setting
+ * rather than selecting the row it sits on. Neither should recolour its container.
+ */
+val RowSpec.isSelected: Boolean
+  get() =
+    on == true &&
+      (accessory == com.rngui.collectionview.generated.AccessoryKind.checkbox ||
+        accessory == com.rngui.collectionview.generated.AccessoryKind.radio)
+
+/**
  * The flattened list, plus what the view needs to address it.
  *
  * @property rowCount how many [Item.Row]s there are, so an empty list can report `-1, -1`.

@@ -24,7 +24,7 @@ import {
   normalizeAppearance,
   type InheritedAppearance,
 } from './appearance'
-import type { Appearance, ListAppearance, Tree } from './tree'
+import type { AndroidListStyle, Appearance, ListAppearance, Tree } from './tree'
 
 export type ColorScheme = 'system' | 'light' | 'dark'
 
@@ -89,6 +89,20 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
   ref?: Ref<CollectionViewInstance>
   /** `insetGrouped` is the iOS Settings look, and the default. */
   listAppearance?: ListAppearance
+
+  /**
+   * How Material 3 arranges the items on **Android**. Ignored on iOS.
+   *
+   * `standard` sits items flush with dividers between them; `segmented` gives each its own rounded
+   * container with a gap, and a selected item a larger radius and the `secondaryContainer` colour.
+   * Both are in the [M3 list spec](https://m3.material.io/components/lists/specs), and the spec is
+   * explicit that the choice is visual rather than behavioural.
+   *
+   * Unset follows `listAppearance`: `segmented` for the grouped appearances, `standard` for
+   * `plain`. That is the mapping that makes a screen written for iOS look right on Android without
+   * a second prop, which is why this exists as an override rather than a requirement.
+   */
+  androidListStyle?: AndroidListStyle
 
   /**
    * Colour, spacing and typography overrides. Anything left unset keeps the platform's own
@@ -272,6 +286,7 @@ export function Root({
   ref,
   style,
   listAppearance,
+  androidListStyle,
   appearance,
   darkAppearance,
   inverted = false,
@@ -361,6 +376,7 @@ export function Root({
     // Omitted rather than set to undefined: `JSON.stringify` drops undefined keys anyway, but
     // being explicit keeps the payload minimal and the intent obvious.
     if (listAppearance != null) tree.listAppearance = listAppearance
+    if (androidListStyle != null) tree.androidListStyle = androidListStyle
     if (resolved.light != null) tree.appearance = resolved.light
     if (resolved.dark != null) tree.darkAppearance = resolved.dark
 
@@ -373,7 +389,7 @@ export function Root({
     const sent = { json: next, revision: nextRevision++ }
     lastSent.current = sent
     return sent
-  }, [serialized.sections, listAppearance, resolved])
+  }, [serialized.sections, listAppearance, androidListStyle, resolved])
 
   // The horizontal inset UIKit gives a grouped section's card on iPhone. A constant because it is
   // UIKit's metric, not ours, and it is not exposed anywhere queryable.

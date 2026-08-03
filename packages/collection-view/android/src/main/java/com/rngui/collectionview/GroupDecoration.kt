@@ -37,14 +37,20 @@ class GroupDecoration(private var style: ListStyle) : RecyclerView.ItemDecoratio
     val position = parent.getChildAdapterPosition(view)
     val item = (parent.adapter as? CollectionAdapter)?.itemAtOrNull(position) ?: return
 
-    val inset = if (style.appearance == ListAppearance.insetGrouped) style.insetPx else 0
-    outRect.left = inset
-    outRect.right = inset
+    outRect.left = style.insetPx
+    outRect.right = style.insetPx
+
+    // In a segmented list every item is its own container, so it needs air above it — that gap is
+    // what the M3 spec separates items with instead of a divider. Applied to the top of each item
+    // rather than between pairs, so it composes with the section gap below rather than fighting it.
+    val segmentGap =
+      if (item is Item.Row && !item.positionInSection.isFirst) style.itemGapPx else 0
 
     // `sectionSpacing` is the *whole* gap between one section and the next, not a contribution to
     // it — the iOS semantics, restated here because the natural Android implementation is a margin
     // on both sides, which would double it.
     outRect.top =
+      segmentGap +
       when {
         position == 0 -> 0
         item is Item.Header -> style.sectionSpacingPx
@@ -60,11 +66,13 @@ class GroupDecoration(private var style: ListStyle) : RecyclerView.ItemDecoratio
   }
 
   override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
-    if (style.separatorColor == 0) return
+    // A segmented list is separated by its gaps. Drawing dividers as well would be saying the same
+    // thing twice, and the M3 spec draws one or the other rather than both.
+    if (!style.drawsSeparators || style.separatorColor == 0) return
     paint.color = style.separatorColor
 
     val adapter = parent.adapter as? CollectionAdapter ?: return
-    val inset = if (style.appearance == ListAppearance.insetGrouped) style.insetPx else 0
+    val inset = style.insetPx
     val height = style.separatorHeightPx.toFloat()
 
     for (index in 0 until parent.childCount) {

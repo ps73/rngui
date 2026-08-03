@@ -25,6 +25,18 @@ import com.rngui.collectionview.generated.RowKind
  * `tree.ts` grows a field — which is the whole reason the generator emits data classes.
  */
 class CollectionAdapter(
+  /**
+   * The context every item view is created against — Material-themed, and carrying the mode.
+   *
+   * **Not `parent.context`.** A `MaterialSwitch` reads `switchTextAppearance`, `colorPrimary` and a
+   * dozen shape attributes at construction time, and inflating one against React Native's plain
+   * `ThemedReactContext` crashes inside `SwitchCompat.onMeasure` — a `StaticLayout` built from a
+   * text appearance that is not there. Material widgets are not optional about their theme.
+   *
+   * It is a `var` because the mode is baked into it: a theme flip needs new widgets, not just new
+   * colours, so [retheme] swaps this and rebuilds every holder.
+   */
+  private var themedContext: android.content.Context,
   private var style: RowStyle,
   private var listStyle: ListStyle,
   private val events: RowEvents,
@@ -45,6 +57,23 @@ class CollectionAdapter(
     this.style = style
     this.listStyle = listStyle
     notifyItemRangeChanged(0, itemCount)
+  }
+
+  /**
+   * Swaps the inflation context and rebuilds every holder.
+   *
+   * Rebinding is enough for anything this library draws itself, but not for a Material widget: its
+   * thumb, track and check colours come from the theme it was *constructed* with, so a switch built
+   * in light mode stays light however many times it is rebound. Recreating them is the only honest
+   * answer, and a theme flip is rare enough to afford it.
+   */
+  fun retheme(context: android.content.Context, style: RowStyle, listStyle: ListStyle) {
+    themedContext = context
+    this.style = style
+    this.listStyle = listStyle
+    // The pool holds views built against the old theme, and they would come straight back.
+    chipPool.clear()
+    notifyDataSetChanged()
   }
 
   /** For the decoration, which reads items by adapter position while drawing. */
@@ -69,14 +98,14 @@ class CollectionAdapter(
 
   override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder =
     when (viewType) {
-      TYPE_HEADER -> LabelHolder(supplementaryView(parent.context, isHeader = true))
-      TYPE_FOOTER -> LabelHolder(supplementaryView(parent.context, isHeader = false))
-      TYPE_CHIPS -> ChipHolder(ChipStripView(parent.context, chipPool))
-      TYPE_ROW_BASE + RowKind.host.ordinal -> HostHolder(HostContainer(parent.context))
+      TYPE_HEADER -> LabelHolder(supplementaryView(themedContext, isHeader = true))
+      TYPE_FOOTER -> LabelHolder(supplementaryView(themedContext, isHeader = false))
+      TYPE_CHIPS -> ChipHolder(ChipStripView(themedContext, chipPool))
+      TYPE_ROW_BASE + RowKind.host.ordinal -> HostHolder(HostContainer(themedContext))
       else ->
         RowHolder(
           RowView(
-            parent.context,
+            themedContext,
             RowKind.entries.getOrElse(viewType - TYPE_ROW_BASE) { RowKind.default },
             events,
           )
@@ -103,9 +132,13 @@ class CollectionAdapter(
           GroupShape.background(
             context = view.context,
             position = item.positionInSection,
-            appearance = listStyle.appearance,
+            style = listStyle.style,
+            grouped = listStyle.grouped,
+            selected = item.row.isSelected,
             rowBackground = listStyle.rowBackground,
-            labelColor = listStyle.labelColor,
+            container = listStyle.containerColor,
+            selectedContainer = listStyle.selectedContainer,
+            rippleSource = listStyle.labelColor,
           )
         // Set unconditionally, including to null: a recycled holder keeps the listener the last
         // row installed, and a non-selectable row inheriting one is a row that reports a press

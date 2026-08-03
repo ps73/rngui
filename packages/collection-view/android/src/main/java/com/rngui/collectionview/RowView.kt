@@ -1,6 +1,7 @@
 package com.rngui.collectionview
 
 import android.app.DatePickerDialog
+import android.app.TimePickerDialog
 import android.content.Context
 import android.text.Editable
 import android.text.InputType
@@ -14,8 +15,8 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupMenu
-import android.widget.Switch
 import android.widget.TextView
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.rngui.collectionview.generated.AutoCapitalize
 import com.rngui.collectionview.generated.ButtonRole
 import com.rngui.collectionview.generated.DatePickerMode
@@ -116,10 +117,21 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
 
   // -- controls, created only for the kind this holder serves --------------------------------
 
-  private val switchView: Switch? =
+  /**
+   * `MaterialSwitch`, not `android.widget.Switch`.
+   *
+   * The platform widget is the Holo-era track-and-thumb, and it looks a decade old next to
+   * anything else on a modern screen — which is precisely what it was. `MaterialSwitch` is the M3
+   * component: a larger thumb that grows on press, an optional icon in the thumb, and the
+   * `primary`/`surfaceContainerHighest` colour roles rather than a grey slab.
+   */
+  private val switchView: MaterialSwitch? =
     if (kind == RowKind.switch) {
-      Switch(context).apply {
-        layoutParams = LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(8) }
+      MaterialSwitch(context).apply {
+        layoutParams = LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(16) }
+        // The row owns the tap; this displays state. Two hit targets that disagree about what a
+        // tap means is worse than one.
+        isClickable = true
       }
     } else {
       null
@@ -191,8 +203,10 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
   init {
     orientation = HORIZONTAL
     gravity = Gravity.CENTER_VERTICAL
-    minimumHeight = context.dp(44)
-    setPadding(context.dp(16), context.dp(11), context.dp(16), context.dp(11))
+    // M3 list item metrics: a one-line item is 56dp tall, a two-line one 72dp, with 16dp of
+    // horizontal padding. iOS's 44pt row is shorter than anything Android draws.
+    minimumHeight = context.dp(56)
+    setPadding(context.dp(16), context.dp(8), context.dp(16), context.dp(8))
     layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, WRAP)
 
     addView(iconView)
@@ -409,30 +423,63 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     FontResolver.apply(display, row.font ?: style.font, LABEL_SIZE_SP, context)
 
     display.setOnClickListener(
-      if (disabled) {
-        null
-      } else {
-        {
-          val calendar = Calendar.getInstance().apply { timeInMillis = millis }
-          DatePickerDialog(
-              context,
-              { _, year, month, day ->
-                calendar.set(year, month, day)
-                events.onDateChange(boundRowId, calendar.timeInMillis.toDouble())
-              },
-              calendar.get(Calendar.YEAR),
-              calendar.get(Calendar.MONTH),
-              calendar.get(Calendar.DAY_OF_MONTH),
-            )
-            .apply {
-              row.minDateMillis?.let { datePicker.minDate = it.toLong() }
-              row.maxDateMillis?.let { datePicker.maxDate = it.toLong() }
-            }
-            .show()
-        }
-      }
+      if (disabled) null else ({ openPicker(row, millis, mode) })
     )
     display.isClickable = !disabled
+  }
+
+  /**
+   * Collects whichever components the mode asks for, chaining date into time when both.
+   *
+   * **`dateAndTime` genuinely needs two dialogs on Android**, and that is a platform difference
+   * rather than an omission: iOS's `UIDatePicker` presents a combined date-and-time wheel, and
+   * Material has no single component that collects both — the M3 date picker and time picker are
+   * separate, and Google's own apps chain them. Reporting after the *first* one, which is what this
+   * did, silently threw the time away.
+   */
+  private fun openPicker(row: RowSpec, millis: Long, mode: DatePickerMode) {
+    val calendar = Calendar.getInstance().apply { timeInMillis = millis }
+
+    fun pickTime(onDone: () -> Unit) {
+      TimePickerDialog(
+          context,
+          { _, hour, minute ->
+            calendar.set(Calendar.HOUR_OF_DAY, hour)
+            calendar.set(Calendar.MINUTE, minute)
+            onDone()
+          },
+          calendar.get(Calendar.HOUR_OF_DAY),
+          calendar.get(Calendar.MINUTE),
+          android.text.format.DateFormat.is24HourFormat(context),
+        )
+        .show()
+    }
+
+    fun pickDate(onDone: () -> Unit) {
+      DatePickerDialog(
+          context,
+          { _, year, month, day ->
+            calendar.set(year, month, day)
+            onDone()
+          },
+          calendar.get(Calendar.YEAR),
+          calendar.get(Calendar.MONTH),
+          calendar.get(Calendar.DAY_OF_MONTH),
+        )
+        .apply {
+          row.minDateMillis?.let { datePicker.minDate = it.toLong() }
+          row.maxDateMillis?.let { datePicker.maxDate = it.toLong() }
+        }
+        .show()
+    }
+
+    val report = { events.onDateChange(boundRowId, calendar.timeInMillis.toDouble()) }
+
+    when (mode) {
+      DatePickerMode.time -> pickTime(report)
+      DatePickerMode.dateAndTime -> pickDate { pickTime(report) }
+      else -> pickDate(report)
+    }
   }
 
   private fun bindMenu(row: RowSpec, style: RowStyle, disabled: Boolean) {

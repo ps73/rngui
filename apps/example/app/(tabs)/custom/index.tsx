@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Pressable, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
   CollectionView,
@@ -16,6 +16,9 @@ const DESIGNS: readonly FontDesign[] = [
   'serif',
   'monospaced',
 ]
+/** The two arrangements https://m3.material.io/components/lists/specs defines. */
+const ANDROID_LIST_STYLES = ['standard', 'segmented'] as const
+
 const VARIANTS = ['grouped', 'inverted'] as const
 const FACES = ['system', 'Inter'] as const
 
@@ -43,6 +46,8 @@ export default function CustomScreen() {
   const [colorScheme, setColorScheme] = useState<ColorScheme>('system')
   const [design, setDesign] = useState<FontDesign>('rounded')
   const [variant, setVariant] = useState<(typeof VARIANTS)[number]>('grouped')
+  const [listStyle, setListStyle] =
+    useState<(typeof ANDROID_LIST_STYLES)[number]>('segmented')
   const [expanded, setExpanded] = useState(false)
   const [face, setFace] = useState<(typeof FACES)[number]>('system')
   const [weightAxis, setWeightAxis] =
@@ -65,6 +70,7 @@ export default function CustomScreen() {
   return (
     <CollectionView.Root
       colorScheme={colorScheme}
+      androidListStyle={listStyle}
       inverted={variant === 'inverted'}
       appearance={{
         tintColor: '#AF52DE',
@@ -138,6 +144,21 @@ export default function CustomScreen() {
           <Chips options={VARIANTS} value={variant} onChange={setVariant} />
         </CollectionView.Host>
       </CollectionView.Section>
+
+      {Platform.OS === 'android' && (
+        <CollectionView.Section
+          header="Material list style"
+          footer="The two arrangements the M3 list spec defines. `standard` sits items flush with dividers between them; `segmented` gives each its own rounded container, and a selected item a larger radius and the secondaryContainer colour. Visual only — neither changes how the list behaves. Unset follows `listAppearance`."
+        >
+          <CollectionView.Host id="android-list-style" height={64}>
+            <Chips
+              options={ANDROID_LIST_STYLES}
+              value={listStyle}
+              onChange={setListStyle}
+            />
+          </CollectionView.Host>
+        </CollectionView.Section>
+      )}
 
       <CollectionView.Section
         header="Integrations"

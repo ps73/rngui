@@ -7,41 +7,76 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import androidx.annotation.ColorInt
-import com.rngui.collectionview.generated.ListAppearance
+import com.rngui.collectionview.generated.AndroidListStyle
 
 /**
- * The grouped-card look, and the reason `insetGrouped` is a *native* Android style now rather than
- * an iOS import.
+ * The Material 3 list item container: its shape, its fill and its press feedback.
  *
- * Pixel Settings draws a group as one rounded card with the rows stacked inside it: the first row
- * takes large leading corners, the last takes large trailing corners, and the middles are nearly
- * square. That is the M3 Expressive treatment, it is what an Android user expects a settings group
- * to look like, and it happens to be exactly the shape `UICollectionLayoutListConfiguration`
- * produces on iOS. The two platforms agree here by coincidence rather than by imitation, which is
- * the best kind of parity this package can have.
+ * The [M3 spec](https://m3.material.io/components/lists/specs) defines two styles, and they differ
+ * in more than corner radius:
  *
- * `GradientDrawable` rather than Material Components' `MaterialShapeDrawable`. It draws the same
- * per-corner radii, and pulling in `com.google.android.material` for a rounded rectangle would put
- * a large dependency — and a theme requirement, since Material views need a Material theme — into
- * an AAR that has no other use for one. M4's stretch goal, the interactive shape morph, is the
- * thing that would justify it.
+ * ```
+ *  standard                        segmented
+ *  ┌──────────────────────────┐    ╭──────────────────────────╮
+ *  │ List item                │    │ List item                │
+ *  ├──────────────────────────┤    ╰──────────────────────────╯
+ *  │ List item                │      ← 4dp gap
+ *  └──────────────────────────┘    ╭──────────────────────────╮
+ *   flush, divider between         │ List item                │
+ *                                  ╰──────────────────────────╯
+ * ```
+ *
+ * **A selected item takes `secondaryContainer` and a larger radius in either style**, and that is
+ * the part that reads as Expressive rather than as a rounded rectangle: the *shape* changes to
+ * signal state, not only the colour. It is why `selected` is a parameter here rather than something
+ * the row paints on top afterwards.
  */
 object GroupShape {
-  /** iOS uses 10pt; Pixel Settings is squarer at the joins and rounder at the ends. */
-  private const val LARGE_DP = 20f
+  /** `shape.corner.large`, for the ends of a grouped run. */
+  private const val LARGE_DP = 16f
+
+  /** `shape.corner.extraSmall`, for the joins inside one. */
   private const val SMALL_DP = 4f
 
-  /** The horizontal breathing room `insetGrouped` puts around each card. */
+  /** A segmented item is a container in its own right, so every corner is the same. */
+  private const val SEGMENTED_DP = 12f
+
+  /**
+   * The selected state.
+   *
+   * M3 Expressive grows the container when it is chosen — a full stadium is what the spec's own
+   * selected-item illustrations show, and it is what makes selection legible without relying on
+   * colour alone.
+   */
+  private const val SELECTED_DP = 28f
+
+  /** The horizontal breathing room `insetGrouped` puts around each container. */
   const val INSET_DP = 16
+
+  /** The vertical gap between segmented items. */
+  const val SEGMENT_GAP_DP = 4
 
   /**
    * Per-corner radii, in the order `GradientDrawable.cornerRadii` wants: top-left, top-right,
    * bottom-right, bottom-left, each as an x/y pair.
    */
-  private fun radii(context: Context, position: Item.Position, rounded: Boolean): FloatArray {
-    if (!rounded) return FloatArray(8)
-    val large = LARGE_DP * context.resources.displayMetrics.density
-    val small = SMALL_DP * context.resources.displayMetrics.density
+  fun radii(
+    context: Context,
+    position: Item.Position,
+    style: AndroidListStyle,
+    grouped: Boolean,
+    selected: Boolean,
+  ): FloatArray {
+    val density = context.resources.displayMetrics.density
+
+    // A selected item is a container of its own whatever the surrounding style, so it rounds every
+    // corner rather than inheriting its neighbours' joins.
+    if (selected) return FloatArray(8) { SELECTED_DP * density }
+    if (style == AndroidListStyle.segmented) return FloatArray(8) { SEGMENTED_DP * density }
+    if (!grouped) return FloatArray(8)
+
+    val large = LARGE_DP * density
+    val small = SMALL_DP * density
     val (top, bottom) =
       when (position) {
         Item.Position.only -> large to large
@@ -53,68 +88,55 @@ object GroupShape {
   }
 
   /**
-   * The row's background, with press feedback clipped to its shape.
+   * The item's background, with press feedback clipped to its shape.
    *
    * **The mask is the whole point.** A `RippleDrawable` with no mask paints ink over the rounded
-   * corner and out into the gap between cards, and an unclipped ripple on a rounded card is the
-   * single most obvious tell that a list was not built for this platform — more obvious than the
-   * wrong radius, because it only appears under the finger and so reads as a glitch rather than as
-   * a style.
+   * corner and out into the gap between items — the single most obvious tell that a list was not
+   * built for this platform, and one that only appears under the finger, so it reads as a glitch
+   * rather than as a style.
    */
   fun background(
     context: Context,
     position: Item.Position,
-    appearance: ListAppearance,
+    style: AndroidListStyle,
+    grouped: Boolean,
+    selected: Boolean,
     @ColorInt rowBackground: Int?,
-    @ColorInt labelColor: Int,
+    @ColorInt container: Int,
+    @ColorInt selectedContainer: Int,
+    @ColorInt rippleSource: Int,
   ): Drawable {
-    val rounded = appearance != ListAppearance.plain
-    val corners = radii(context, position, rounded)
+    val corners = radii(context, position, style, grouped, selected)
 
     val fill =
       GradientDrawable().apply {
         cornerRadii = corners
-        // `plain` is edge-to-edge with no card, so an unthemed plain list draws nothing at all and
-        // lets whatever is behind it show through — which is what "the platform's own colour"
-        // means for a style that has no card.
-        setColor(rowBackground ?: if (rounded) defaultCard(labelColor) else Color.TRANSPARENT)
+        setColor(
+          when {
+            selected -> selectedContainer
+            rowBackground != null -> rowBackground
+            // A `standard` item on a `plain` list draws nothing and lets the list surface show
+            // through, which is what "the platform's own colour" means for a style that has no
+            // container of its own.
+            !grouped && style == AndroidListStyle.standard -> Color.TRANSPARENT
+            else -> container
+          }
+        )
       }
 
-    val mask = GradientDrawable().apply {
-      cornerRadii = corners
-      setColor(Color.WHITE)
-    }
+    val mask =
+      GradientDrawable().apply {
+        cornerRadii = corners
+        setColor(Color.WHITE)
+      }
 
-    // Derived from the label colour rather than fixed, so the ripple lightens a dark row and
-    // darkens a light one from one rule — the same trick `rnguiOverlaid(with:alpha:)` plays on iOS
-    // by overlaying the dynamic `label` colour.
-    val ripple = (labelColor and 0x00FFFFFF) or (RIPPLE_ALPHA shl 24)
+    // Derived from `onSurface` rather than fixed, so one rule lightens a dark row and darkens a
+    // light one — M3 states the pressed state as 12% of the content colour.
+    val ripple = (rippleSource and 0x00FFFFFF) or (RIPPLE_ALPHA shl 24)
 
     return RippleDrawable(ColorStateList.valueOf(ripple), fill, mask)
   }
 
-  /**
-   * The card colour when `appearance.rowBackground` is unset.
-   *
-   * Read off the label colour, which already encodes the mode: a white label means a dark list, so
-   * the card is a light-on-dark surface. One rule, no second source of truth about which mode is
-   * in force.
-   */
-  @ColorInt
-  private fun defaultCard(@ColorInt labelColor: Int): Int =
-    if (isLight(labelColor)) SURFACE_DARK else SURFACE_LIGHT
-
-  /** The background behind the cards. */
-  @ColorInt
-  fun defaultBackground(@ColorInt labelColor: Int): Int =
-    if (isLight(labelColor)) BACKGROUND_DARK else BACKGROUND_LIGHT
-
-  private fun isLight(@ColorInt color: Int): Boolean =
-    (Color.red(color) + Color.green(color) + Color.blue(color)) > 3 * 128
-
+  /** M3's pressed-state opacity. */
   private const val RIPPLE_ALPHA = 0x1F
-  private const val SURFACE_LIGHT = 0xFFFFFFFF.toInt()
-  private const val SURFACE_DARK = 0xFF1C1C1E.toInt()
-  private const val BACKGROUND_LIGHT = 0xFFF2F2F7.toInt()
-  private const val BACKGROUND_DARK = 0xFF000000.toInt()
 }

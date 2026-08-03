@@ -27,6 +27,9 @@ const config: ExpoConfig = {
     package: 'com.rngui.example',
   },
   plugins: [
+    // The tab bar's Android icons. A native tab bar draws the platform's own, so the SF Symbol
+    // names in `(tabs)/_layout.tsx` need Android drawables beside them — see the plugin.
+    './plugins/with-tab-drawables',
     'expo-router',
     'expo-status-bar',
     [

@@ -65,6 +65,7 @@ export type {
   SectionLayout,
   HeaderBackgroundStyle,
   KeyboardType,
+  AndroidListStyle,
   ListAppearance,
   MenuItemSpec,
   ReturnKeyType,

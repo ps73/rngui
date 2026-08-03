@@ -212,6 +212,19 @@ enum ListAppearance: String, Decodable {
   }
 }
 
+/// Generated from `AndroidListStyle` in tree.ts.
+enum AndroidListStyle: String, Decodable {
+  case standard
+  case segmented
+  /// A value this binary does not recognise.
+  case unknown
+
+  init(from decoder: any Decoder) throws {
+    let raw = try decoder.singleValueContainer().decode(String.self)
+    self = AndroidListStyle(rawValue: raw) ?? .unknown
+  }
+}
+
 /// One entry in a `menu` row's `UIMenu`.
 struct MenuItemSpec: Decodable, Equatable {
   var id: String = ""
@@ -635,6 +648,11 @@ struct Appearance: Decodable, Equatable {
 struct Tree: Decodable, Equatable {
   var sections: [SectionSpec] = []
   var listAppearance: ListAppearance?
+  /// Android's Material 3 list style. Ignored on iOS, where the shape comes from `listAppearance`.
+  ///
+  /// Defaults to `segmented` for `insetGrouped` and `grouped`, and to `standard` for `plain` —
+  /// which is the mapping that makes an unchanged cross-platform screen look right on both.
+  var androidListStyle: AndroidListStyle?
   var appearance: Appearance?
   /// Applied when the interface style is dark. Falls back to `appearance` field by field, so
   /// setting only `appearance` gives you that look in both modes — the least surprising
@@ -642,7 +660,7 @@ struct Tree: Decodable, Equatable {
   var darkAppearance: Appearance?
 
   private enum CodingKeys: String, CodingKey {
-    case sections, listAppearance, appearance, darkAppearance
+    case sections, listAppearance, androidListStyle, appearance, darkAppearance
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -652,6 +670,7 @@ struct Tree: Decodable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     sections = try container.decodeIfPresent([SectionSpec].self, forKey: .sections) ?? []
     listAppearance = try container.decodeIfPresent(ListAppearance.self, forKey: .listAppearance)
+    androidListStyle = try container.decodeIfPresent(AndroidListStyle.self, forKey: .androidListStyle)
     appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance)
     darkAppearance = try container.decodeIfPresent(Appearance.self, forKey: .darkAppearance)
   }

@@ -13,6 +13,7 @@ import com.facebook.react.uimanager.PixelUtil
 import com.facebook.react.uimanager.ThemedReactContext
 import com.facebook.react.uimanager.UIManagerHelper
 import com.facebook.react.uimanager.events.Event
+import com.rngui.collectionview.generated.AndroidListStyle
 import com.rngui.collectionview.generated.Appearance
 import com.rngui.collectionview.generated.ListAppearance
 import com.rngui.collectionview.generated.Tree
@@ -96,6 +97,9 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   /** `insetGrouped` unless the tree says otherwise, matching the JS default. */
   private var listAppearance: ListAppearance = ListAppearance.insetGrouped
 
+  /** Unset means "whatever the appearance implies"; see `ListStyle.defaultStyleFor`. */
+  private var androidListStyle: AndroidListStyle? = null
+
   /**
    * The configuration the appearance resolves against.
    *
@@ -158,6 +162,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   private val adapter =
     CollectionAdapter(
+      resolver().context,
       rowStyle(),
       listStyle(),
       rowEvents,
@@ -438,6 +443,10 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     post(relayout)
   }
 
+  /** The mode the adapter's item views were built against. */
+  private var themedIsDark: Boolean =
+    AppearanceResolver.isDark(context.resources.configuration, ColorScheme.system)
+
   private var relayoutScheduled = false
 
   private val relayout = Runnable {
@@ -473,6 +482,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       appearance = tree.appearance
       darkAppearance = tree.darkAppearance
       listAppearance = tree.listAppearance ?: ListAppearance.insetGrouped
+      androidListStyle = tree.androidListStyle
       flattened = FlattenedTree.of(tree)
       adapter.submitList(flattened.items)
     }
@@ -522,9 +532,17 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   }
 
   private fun restyle() {
+    val resolver = resolver()
     val list = listStyle()
     decoration.restyle(list)
-    adapter.restyle(rowStyle(), list)
+    // A mode change needs new Material widgets, not just new colours; anything else only needs a
+    // rebind. `retheme` is the expensive path, so it is taken only when the mode actually moved.
+    if (resolver.isDark != themedIsDark) {
+      themedIsDark = resolver.isDark
+      adapter.retheme(resolver.context, RowStyle.of(resolver), list)
+    } else {
+      adapter.restyle(RowStyle.of(resolver), list)
+    }
     applyBackground()
     // The decoration draws from `onDraw`, which only runs on a draw pass — and a restyle that
     // changes nothing about layout would not schedule one.
@@ -533,8 +551,16 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   private fun rowStyle() = RowStyle.of(resolver())
 
-  private fun listStyle() =
-    ListStyle.of(context, resolver(), rowStyle(), listAppearance)
+  private fun listStyle(): ListStyle {
+    val resolver = resolver()
+    return ListStyle.of(
+      resolver.context,
+      resolver,
+      RowStyle.of(resolver),
+      listAppearance,
+      androidListStyle,
+    )
+  }
 
   /**
    * The colour behind the cards.
@@ -546,12 +572,22 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     setBackgroundColor(listStyle().backgroundColor)
   }
 
-  private fun resolver(): AppearanceResolver =
-    AppearanceResolver(
-      isDark = AppearanceResolver.isDark(configuration, appliedColorScheme),
+  /**
+   * Rebuilt rather than cached, and the themed context with it.
+   *
+   * A `ContextThemeWrapper` carries the mode it was built for, so a cached one would keep resolving
+   * Material tokens against whichever mode was current when the list first appeared — which is the
+   * dark-mode bug in a different disguise.
+   */
+  private fun resolver(): AppearanceResolver {
+    val dark = AppearanceResolver.isDark(configuration, appliedColorScheme)
+    return AppearanceResolver(
+      context = AppearanceResolver.themedContext(context, dark),
+      isDark = dark,
       light = appearance,
       dark = darkAppearance,
     )
+  }
 
   private fun surfaceId(): Int = UIManagerHelper.getSurfaceId(reactContext)
 
