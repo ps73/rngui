@@ -27,9 +27,10 @@ within them is listed honestly rather than rounded up.
 | M7 Controls                       | Done. Recycling emits zero spurious events, proven by mutation |
 | M8 Host rows                      | Done. Ownership guard proven by mutation                       |
 | M9 Chips + swipe actions          | Done                                                           |
-| M10 Insets, keyboard, scroll      | Done, except the focus-following half of `keyboardAware`       |
+| M10 Insets, keyboard, scroll      | Done                                                           |
 | M11 Bottom sheet                  | Done. Scrolls, hands the drag back, zero direction reversals   |
 | M12 Example parity, docs, release | Done, except the four-device matrix                            |
+| Post-plan                         | M3 Expressive pass, 16 reported defects, Slider, Pixel screens |
 
 **M11 took two bugs in the same seam.** RNGH's `NativeViewGestureHandler` decides whether to
 activate with `view is ViewGroup && view.onInterceptTouchEvent(event)`, and the view it asks is this
@@ -48,9 +49,28 @@ built: the counter itself reads clean here, so there is no judder to measure.
 
 **Not done in M12:** the device matrix (one API 24 device, one API 31, one current, one low-RAM).
 Only a single emulator was available, so "it works on a Pixel 10 emulator" is the whole of the
-claim. The Settings and Contacts screens are also still ports of their iOS originals rather than
-Android-native rebuilds — the strongest forcing function for Expressive fidelity in the plan, and
-untouched.
+claim. This is now the only thing on the plan that has not been done.
+
+The Settings and Contacts screens **were** the other one, and are no longer: Settings is a Pixel
+Settings rebuild — two-line rows with a summary under each, bare monochrome glyphs, no chevrons,
+toolbar search — and Contacts is Google Contacts, with monogram avatars over the same 2,000-row
+harness and no swipe-to-delete, because Material assigns that gesture to dismiss. Both platforms
+keep their own file, picked by `Platform.select` rather than by Metro's platform extensions, so
+`npm run typecheck` covers both rather than silently checking one.
+
+**`keyboardAware`'s focus-following half is done too**, and its verification is worth recording
+because it is not the usual kind. `InsetController` already turns the IME height into the list's
+bottom padding, and `RecyclerView` scrolls against `getHeight() - getPaddingBottom()` — so the
+whole of "scroll the field above the keyboard" is one `requestRectangleOnScreen` with the caret's
+rect, and none of this code ever learns how tall a keyboard is. The caret rather than the row,
+because a grown `textArea` centred by its row leaves the line being typed underneath the IME.
+
+It could not be exercised on the emulator: its Gboard renders floating and contributes no window
+inset, so there is nothing for the list to react to, and the setting that normally forces a docked
+IME did not take. `KeyboardFocusTest` simulates the keyboard as the bottom padding it becomes in
+production, which is what every line under test actually sees — proven by two mutants, one dropping
+the caret path and one refusing to scroll. What that leaves unverified is the two one-line hooks
+that call it.
 
 Three plan assumptions did not survive contact and are corrected in place below: Compose needs a
 compiler plugin the app does not provide, the Material Symbols font is 14 MB rather than something

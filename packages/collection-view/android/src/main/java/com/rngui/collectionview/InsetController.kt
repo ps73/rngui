@@ -81,6 +81,15 @@ class InsetController(
   private var systemBars = Insets.NONE
   private var imeBottom = 0
 
+  /**
+   * How much of the list the keyboard currently covers, in pixels.
+   *
+   * Read by `keyboardAware`'s focus-following half, which has to distinguish "the IME moved" from
+   * "a system bar did" — the first should re-scroll the focused field and the second must not.
+   */
+  val keyboardHeight: Int
+    get() = imeBottom
+
   /** The resolved padding, in pixels, for the scroll event's `contentInset`. */
   var resolvedTop = 0
     private set

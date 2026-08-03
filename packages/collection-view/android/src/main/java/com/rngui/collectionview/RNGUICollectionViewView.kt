@@ -3,6 +3,7 @@ package com.rngui.collectionview
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.view.MotionEvent
+import android.view.View
 import kotlin.math.abs
 import android.widget.FrameLayout
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -67,7 +68,21 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     InsetController(
       root = this,
       list = list,
-      onInsetsChanged = { scroll.reportContentSizeIfChanged() },
+      onInsetsChanged = {
+        scroll.reportContentSizeIfChanged()
+        // Gated on the *keyboard* having moved, not on any inset having been applied: a system bar
+        // change or a re-attach would otherwise yank a list the user had scrolled away from back to
+        // whatever field still holds focus.
+        //
+        // Fired on every frame of the IME animation, and immediately, which is deliberate. The
+        // callback runs once per frame of the keyboard's own timeline, so scrolling in step with it
+        // is what keeps the field and the keyboard on one animation rather than two that happen to
+        // end together — the same reasoning that put the inset itself on that callback.
+        if (insets.keyboardHeight != lastKeyboardHeight) {
+          lastKeyboardHeight = insets.keyboardHeight
+          if (insets.keyboardHeight > 0) scrollFocusedInputIntoView(immediate = true)
+        }
+      },
     )
 
   // -- pending props ----------------------------------------------------------------------------
@@ -138,8 +153,15 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       override fun onTextChange(rowId: String, value: String) =
         dispatch(RowValueEvent.string(surfaceId(), id, RowValueEvent.TEXT, rowId, value))
 
-      override fun onFocusChange(rowId: String, focused: Boolean) =
+      override fun onFocusChange(rowId: String, focused: Boolean) {
         dispatch(RowValueEvent.bool(surfaceId(), id, RowValueEvent.FOCUS, rowId, focused))
+        // **The case no inset change covers.** Moving between two fields with the keyboard already
+        // up never changes the IME's height, so nothing else notices — and tabbing from a field
+        // near the top to one behind the keyboard leaves the caret hidden. Posted rather than run
+        // now because the new field's `Layout` is not built until after the focus pass, and asking
+        // during it returns the *previous* field's geometry.
+        if (focused && insets.keyboardHeight > 0) post { scrollFocusedInputIntoView(false) }
+      }
 
       override fun onDateChange(rowId: String, millis: Double) =
         dispatch(RowValueEvent.number(surfaceId(), id, RowValueEvent.DATE, rowId, millis))
@@ -302,13 +324,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   private var keyboardDismissMode: KeyboardDismissMode = KeyboardDismissMode.onDrag
 
-  /**
-   * `keyboardAware` implies `automaticallyAdjustKeyboardInsets` — it is documented as a superset.
-   *
-   * The other half, scrolling the focused row above the IME, needs a focused row to scroll to and
-   * therefore needs M7's text fields. Setting the inset half now means a form is usable rather
-   * than half-covered in the meantime.
-   */
+  /** `keyboardAware` implies `automaticallyAdjustKeyboardInsets` — documented as a superset. */
   fun setKeyboardAware(value: Boolean) {
     keyboardAware = value
     if (value) setAdjustsForKeyboard(true)
@@ -317,6 +333,26 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   private var keyboardAware: Boolean = false
 
   var keyboardAwareOffset: Int = 0
+
+  /** The IME height at the last inset pass, so a bar change can be told from a keyboard one. */
+  private var lastKeyboardHeight = 0
+
+  /**
+   * Scrolls the focused field clear of the IME.
+   *
+   * The keyboard's height never appears here: `InsetController` has already turned it into the
+   * list's bottom padding, and `RecyclerView` scrolls against `getHeight() - getPaddingBottom()`.
+   * See [FocusScroller], which is where the rest of it lives so that it can be tested.
+   */
+  fun scrollFocusedInputIntoView(immediate: Boolean) {
+    if (!keyboardAware) return
+    val focused = list.findFocus() ?: return
+    FocusScroller.scrollIntoView(
+      focused,
+      extraPx = context.dp(keyboardAwareOffset) + context.dp(FOCUS_MARGIN_DP),
+      immediate = immediate,
+    )
+  }
 
   // -- gesture interop with react-native-gesture-handler -----------------------------------------
   //
@@ -739,4 +775,10 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     val target = context.dp(y) - scroll.offsetPx
     if (animated) list.smoothScrollBy(0, target) else list.scrollBy(0, target)
   }
+
+  private companion object {
+    /** Air between the caret and the top of the keyboard. Matches the iOS host. */
+    const val FOCUS_MARGIN_DP = 8
+  }
+
 }
