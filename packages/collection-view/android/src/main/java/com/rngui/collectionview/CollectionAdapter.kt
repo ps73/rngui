@@ -131,22 +131,11 @@ class CollectionAdapter(
           return
         }
         val view = (holder as RowHolder).view
-        view.bind(item.row, style)
-        // Rebuilt per bind rather than cached per position: the shape depends on where the row
-        // sits in its section, and a recycled holder arriving at a different position would
-        // otherwise keep the previous occupant's corners. The reuse rule reaches drawables too.
-        view.background =
-          GroupShape.background(
-            context = view.context,
-            position = item.positionInSection,
-            style = listStyle.style,
-            grouped = listStyle.grouped,
-            selected = item.row.isSelected,
-            rowBackground = listStyle.rowBackground,
-            container = listStyle.containerColor,
-            selectedContainer = listStyle.selectedContainer,
-            rippleSource = listStyle.labelColor,
-          )
+        // The container goes with the row rather than being assigned here, because its shape has to
+        // *move* between states rather than jump — which needs a drawable that outlives the bind.
+        // `positionInSection` still has to be passed on every one: a recycled holder arriving in
+        // the middle of a section would otherwise keep the previous occupant's corners.
+        view.bind(item.row, style, listStyle, item.positionInSection)
         // Set unconditionally, including to null: a recycled holder keeps the listener the last
         // row installed, and a non-selectable row inheriting one is a row that reports a press
         // nobody can see it accepting.

@@ -101,8 +101,9 @@ class AppearanceResolver(
   companion object {
     private val attrIds = HashMap<String, Int>()
 
+    /** Also how [Motion] finds its tokens; see [token] for why by name. */
     @AttrRes
-    private fun attrId(context: Context, name: String): Int =
+    internal fun attrId(context: Context, name: String): Int =
       attrIds.getOrPut(name) {
         context.resources.getIdentifier(name, "attr", context.packageName)
       }

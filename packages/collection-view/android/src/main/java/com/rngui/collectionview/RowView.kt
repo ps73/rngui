@@ -16,6 +16,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
+import androidx.annotation.VisibleForTesting
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.rngui.collectionview.generated.AutoCapitalize
 import com.rngui.collectionview.generated.ButtonRole
@@ -59,6 +60,19 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
   LinearLayout(context) {
 
   private var boundRowId: String = ""
+
+  /** What [RowSpec.isSelected] said last time, so a change in it can be told from a recycle. */
+  private var boundSelected: Boolean = false
+
+  /**
+   * The M3 container this row draws in — its shape, its fill, and the transition between states.
+   *
+   * Installed here rather than assigned by the adapter on every bind, which is what lets a
+   * selection change be animated at all; see [RowContainer].
+   */
+  private val container = RowContainer(this)
+
+  @VisibleForTesting val containerForTest: RowContainer get() = container
 
   // -- text ---------------------------------------------------------------------------------
 
@@ -184,13 +198,26 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
   private val textWatcher =
     object : TextWatcher {
       override fun afterTextChanged(s: Editable?) {
-        events.onTextChange(boundRowId, s?.toString().orEmpty())
+        val text = s?.toString().orEmpty()
+        pendingEchoes.add(text)
+        if (pendingEchoes.size > MAX_ECHOES) {
+          pendingEchoes.subList(0, pendingEchoes.size - MAX_ECHOES).clear()
+        }
+        events.onTextChange(boundRowId, text)
       }
 
       override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
 
       override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
     }
+
+  /**
+   * Values sent to JavaScript and not yet echoed back. See [applyText].
+   *
+   * Bounded: a burst of typing is short, and an unbounded list would grow for the lifetime of a
+   * field whose value JavaScript never round-trips.
+   */
+  private val pendingEchoes = ArrayList<String>()
 
   private val focusListener =
     OnFocusChangeListener { _, focused -> events.onFocusChange(boundRowId, focused) }
@@ -241,8 +268,24 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
    * previous occupant's when it does not — which reads as a data bug rather than a recycling one,
    * and is the single most common way a recycled list goes subtly wrong.
    */
-  fun bind(row: RowSpec, style: RowStyle) {
+  fun bind(row: RowSpec, style: RowStyle, listStyle: ListStyle, position: Item.Position) {
+    val selected = row.isSelected
+    // **The one question [RowContainer] cannot answer for itself**, and it has to be asked before
+    // the fields below are overwritten: is this the same row changing state, or a recycled holder
+    // arriving at a new one? Only the first is a transition. A restyle answers `false` too — the ids
+    // match but nothing about the selection moved — so a theme flip repaints 2,000 rows rather than
+    // animating them.
+    val sameRow = row.id == boundRowId
+    val transitioned = sameRow && selected != boundSelected
+    // A pending echo belongs to the row that sent it, and a holder that has moved on will never see
+    // it come back. Carrying the list over would let one field's stale value be mistaken for
+    // another's; see `applyText`.
+    if (!sameRow) pendingEchoes.clear()
     boundRowId = row.id
+    boundSelected = selected
+
+    container.apply(position, listStyle, selected, animate = transitioned)
+
     val disabled = row.disabled == true
 
     iconView.bind(row, style)
@@ -344,10 +387,7 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     field.removeTextChangedListener(textWatcher)
     field.onFocusChangeListener = null
 
-    val text = row.text.orEmpty()
-    // Guarded rather than assigned unconditionally: setting the same text still moves the caret to
-    // the end, so a rebind while the user is typing mid-string would jump them to the end of it.
-    if (field.text.toString() != text) field.setText(text)
+    applyText(field, row.text.orEmpty())
     field.hint = row.placeholder.orEmpty()
     field.isEnabled = !disabled
     field.setTextColor(if (disabled) style.disabledColor else style.labelColor)
@@ -367,6 +407,63 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
 
     field.addTextChangedListener(textWatcher)
     field.onFocusChangeListener = focusListener
+  }
+
+  /**
+   * Writes the descriptor's text into the field without ever losing a keystroke.
+   *
+   * The naive version — assign whenever it differs — scrambles what the user typed, and the
+   * mechanism is worth spelling out because it is not obvious and it *looks* correct. Each keystroke
+   * goes to JavaScript asynchronously. Type `ab` quickly and the sequence is: the field holds `ab`;
+   * the commit carrying `a` arrives; `"ab" != "a"` so the field is assigned `"a"`; the `b` is gone.
+   * Typing "Rehearsal-on-Thursday" into the naive version produced **`-on-ThursdayRehear`** — which
+   * is the second half of the bug, below.
+   *
+   * So every value sent to JavaScript is remembered, and an incoming value that is one of those is
+   * recognised as an **echo** and ignored: JavaScript agreeing with something the field already
+   * knows, possibly something it has since moved past. Anything else is a genuine instruction — a
+   * clear, an input mask, a value set from elsewhere — and is applied.
+   *
+   * This is the same problem React Native's own `TextInput` solves with `eventCount`, and the same
+   * answer [`TextFieldCell.applyText`] gives on iOS; the pending list is that idea without needing a
+   * counter to ride in the tree.
+   *
+   * **And when a value genuinely is applied, the caret has to be put back.** `EditText.setText`
+   * installs a fresh `Editable`, and `ArrowKeyMovementMethod.initialize` then selects offset *zero*
+   * on it — so the caret goes to the *start* of the field, not the end, and every subsequent
+   * character is typed in front of what came before. That is why the text above came out reversed in
+   * chunks rather than merely truncated.
+   */
+  private fun applyText(field: EditText, next: String) {
+    if (field.hasFocus()) {
+      val index = pendingEchoes.indexOf(next)
+      if (index >= 0) {
+        // Everything *older* than this value is now accounted for and can go — a commit never
+        // arrives out of order, so those will not be echoed again.
+        //
+        // **The matched value itself stays**, and that is the difference from the iOS cell this is
+        // otherwise a port of. A `RecyclerView` rebinds a row for reasons that have nothing to do
+        // with its content, so the same tree value reaches this method more than once; consuming it
+        // on the first pass makes the second a miss, and a miss writes. Instrumented, that read:
+        //
+        //     apply next='Rehear' have='Re'                → MISS, applied
+        //     …eleven keystrokes later…
+        //     apply next='Rehear' have='Rehearon-Thursday' → MISS, applied
+        //
+        // — the field thrown back eleven characters by a value it had itself sent.
+        if (index > 0) pendingEchoes.subList(0, index).clear()
+        return
+      }
+    }
+    pendingEchoes.clear()
+    if (field.text.toString() == next) return
+
+    val caret = field.selectionEnd
+    val wasAtEnd = caret >= field.text.length
+    field.setText(next)
+    // At the end is where a mask that added characters wants it; anywhere else, the same offset is
+    // the closest thing to "where the user was".
+    field.setSelection(if (wasAtEnd) next.length else caret.coerceIn(0, next.length))
   }
 
   private fun bindCard(row: RowSpec, style: RowStyle, tint: Int, disabled: Boolean) {
@@ -579,6 +676,9 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
 
     /** `systemRed`, matching `ButtonRole.destructive` on iOS. */
     const val DESTRUCTIVE = 0xFFFF3B30.toInt()
+
+    /** How many un-echoed values to remember. Matches the iOS cell's bound. */
+    const val MAX_ECHOES = 32
 
     /**
      * Applied on top of the greyed text colours rather than instead of them.

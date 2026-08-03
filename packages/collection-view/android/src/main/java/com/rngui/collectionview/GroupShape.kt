@@ -1,11 +1,7 @@
 package com.rngui.collectionview
 
 import android.content.Context
-import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.Drawable
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.RippleDrawable
 import androidx.annotation.ColorInt
 import com.rngui.collectionview.generated.AndroidListStyle
 
@@ -93,54 +89,38 @@ object GroupShape {
   }
 
   /**
-   * The item's background, with press feedback clipped to its shape.
+   * What fills that shape.
    *
-   * **The mask is the whole point.** A `RippleDrawable` with no mask paints ink over the rounded
-   * corner and out into the gap between items — the single most obvious tell that a list was not
-   * built for this platform, and one that only appears under the finger, so it reads as a glitch
-   * rather than as a style.
+   * Separate from [radii] rather than folded into one drawable-building call, because these are the
+   * two values a selection change moves and [RowContainer] has to interpolate them independently:
+   * eight lengths and one colour, both arriving at the same instant.
    */
-  fun background(
-    context: Context,
-    position: Item.Position,
+  @ColorInt
+  fun fill(
     style: AndroidListStyle,
     grouped: Boolean,
     selected: Boolean,
     @ColorInt rowBackground: Int?,
     @ColorInt container: Int,
     @ColorInt selectedContainer: Int,
-    @ColorInt rippleSource: Int,
-  ): Drawable {
-    val corners = radii(context, position, style, grouped, selected)
+  ): Int =
+    when {
+      selected -> selectedContainer
+      rowBackground != null -> rowBackground
+      // A `standard` item on a `plain` list draws nothing and lets the list surface show through,
+      // which is what "the platform's own colour" means for a style that has no container of its
+      // own.
+      !grouped && style == AndroidListStyle.standard -> Color.TRANSPARENT
+      else -> container
+    }
 
-    val fill =
-      GradientDrawable().apply {
-        cornerRadii = corners
-        setColor(
-          when {
-            selected -> selectedContainer
-            rowBackground != null -> rowBackground
-            // A `standard` item on a `plain` list draws nothing and lets the list surface show
-            // through, which is what "the platform's own colour" means for a style that has no
-            // container of its own.
-            !grouped && style == AndroidListStyle.standard -> Color.TRANSPARENT
-            else -> container
-          }
-        )
-      }
-
-    val mask =
-      GradientDrawable().apply {
-        cornerRadii = corners
-        setColor(Color.WHITE)
-      }
-
-    // Derived from `onSurface` rather than fixed, so one rule lightens a dark row and darkens a
-    // light one — M3 states the pressed state as 12% of the content colour.
-    val ripple = (rippleSource and 0x00FFFFFF) or (RIPPLE_ALPHA shl 24)
-
-    return RippleDrawable(ColorStateList.valueOf(ripple), fill, mask)
-  }
+  /**
+   * The pressed-state ink.
+   *
+   * Derived from `onSurface` rather than fixed, so one rule lightens a dark row and darkens a light
+   * one — M3 states the pressed state as 12% of the content colour.
+   */
+  @ColorInt fun ripple(@ColorInt source: Int): Int = (source and 0x00FFFFFF) or (RIPPLE_ALPHA shl 24)
 
   /** M3's pressed-state opacity. */
   private const val RIPPLE_ALPHA = 0x1F
