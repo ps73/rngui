@@ -94,15 +94,21 @@ sealed class Item {
 /**
  * Whether M3 should draw this row as a *selected* list item.
  *
- * True for a checked `checkbox` or `radio` accessory, which is what the
- * [M3 list guidance](https://m3.material.io/components/lists/guidelines) means by a selected item —
- * a `checkmark` is a static tick rather than a selection control, and a `switch` toggles a setting
- * rather than selecting the row it sits on. Neither should recolour its container.
+ * True for any row carrying an **on** selection control — a checked checkbox, a chosen radio, or a
+ * switch that is on. The
+ * [M3 list guidance](https://m3.material.io/components/lists/guidelines) treats all three as
+ * selection controls that a list item can carry, and the selected container is a property of the
+ * *item*, not of which control happens to express it. A switch row that reads as unselected while
+ * a checkbox row beside it reads as selected is two rules where the spec has one.
+ *
+ * A `checkmark` is excluded on purpose: it is a static tick, not a control, and nothing about it
+ * changes when the row is tapped.
  */
 val RowSpec.isSelected: Boolean
   get() =
     on == true &&
-      (accessory == com.rngui.collectionview.generated.AccessoryKind.checkbox ||
+      (kind == com.rngui.collectionview.generated.RowKind.switch ||
+        accessory == com.rngui.collectionview.generated.AccessoryKind.checkbox ||
         accessory == com.rngui.collectionview.generated.AccessoryKind.radio)
 
 /**

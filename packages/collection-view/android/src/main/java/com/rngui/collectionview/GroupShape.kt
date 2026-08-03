@@ -38,9 +38,6 @@ object GroupShape {
   /** `shape.corner.extraSmall`, for the joins inside one. */
   private const val SMALL_DP = 4f
 
-  /** A segmented item is a container in its own right, so every corner is the same. */
-  private const val SEGMENTED_DP = 12f
-
   /**
    * The selected state.
    *
@@ -59,6 +56,12 @@ object GroupShape {
   /**
    * Per-corner radii, in the order `GradientDrawable.cornerRadii` wants: top-left, top-right,
    * bottom-right, bottom-left, each as an x/y pair.
+   *
+   * **`segmented` shapes by position exactly as a grouped run does** — large corners at the ends of
+   * the group, small ones at the joins. The gap is the only thing that distinguishes the two, which
+   * is what the spec's own side-by-side shows: the segmented column's first item is rounder at the
+   * top and its last rounder at the bottom, and only the middles are uniform. Rounding every item
+   * identically loses the group's beginning and end, which is the information the shape is carrying.
    */
   fun radii(
     context: Context,
@@ -72,8 +75,10 @@ object GroupShape {
     // A selected item is a container of its own whatever the surrounding style, so it rounds every
     // corner rather than inheriting its neighbours' joins.
     if (selected) return FloatArray(8) { SELECTED_DP * density }
-    if (style == AndroidListStyle.segmented) return FloatArray(8) { SEGMENTED_DP * density }
-    if (!grouped) return FloatArray(8)
+
+    // `plain` + `standard` is the one combination with no container at all: square, and the fill
+    // below is transparent.
+    if (!grouped && style == AndroidListStyle.standard) return FloatArray(8)
 
     val large = LARGE_DP * density
     val small = SMALL_DP * density

@@ -273,7 +273,11 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     }
 
     isEnabled = !disabled
-    isClickable = row.selectable == true && !disabled
+    // **A `menu` row is clickable whether or not it is `selectable`**, because the click is what
+    // opens the popup rather than what reports a press. Deriving this from `selectable` alone
+    // silently disabled every menu row that had no `onPress` — which is all of them, since a menu
+    // reports its choice through `onMenuSelect`. The row looked fine and did nothing.
+    isClickable = (row.selectable == true || kind == RowKind.menu) && !disabled
     alpha = if (disabled) DISABLED_ALPHA else 1f
   }
 

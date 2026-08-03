@@ -44,6 +44,13 @@ class CollectionAdapter(
   private val parking: ParkingView,
   /** The mounted React children, in mount order — which is what `hostIndex` indexes into. */
   private val hostChildAt: (Int) -> View?,
+  /**
+   * How far the row at a position is displaced by an open swipe tray.
+   *
+   * Applied on bind because `ItemAnimator` clears `translationX` on any layout pass that rebinds a
+   * row, so the open tray's row would spring shut on the next unrelated commit.
+   */
+  private val swipeTranslation: (Int) -> Float = { 0f },
 ) : ListAdapter<Item, RecyclerView.ViewHolder>(DIFF) {
 
   /**
@@ -147,6 +154,8 @@ class CollectionAdapter(
         // overwrite it. Every other kind gets the press listener set unconditionally, including to
         // null: a recycled holder keeps whatever the last row installed, and a non-selectable row
         // inheriting one reports a press nobody can see it accepting.
+        view.translationX = swipeTranslation(position)
+
         val pressable = item.row.selectable == true && item.row.disabled != true
         if (item.row.kind != RowKind.menu) {
           view.setOnClickListener(if (pressable) ({ events.onRowPress(item.row.id) }) else null)

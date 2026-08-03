@@ -160,7 +160,11 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
    */
   private val parking = ParkingView(context)
 
-  private val adapter =
+  // Explicit types, and `adapter` before `swipe`. The two hold lambdas that reach for each other —
+  // the adapter asks the callback how far a row is displaced, the callback asks the adapter what
+  // actions a row has — which Kotlin cannot infer through. Both lambdas fire long after
+  // construction, so the cycle is only a compile-time problem.
+  private val adapter: CollectionAdapter =
     CollectionAdapter(
       resolver().context,
       rowStyle(),
@@ -171,6 +175,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       // bay's own child order renumbers everything after the first claimed child, so the rows on
       // screen borrow the wrong subtrees and the ones being windowed in come up empty.
       hostChildAt = { index -> claimedChildren.getOrNull(index) },
+      swipeTranslation = { position -> swipe.translationFor(position) },
     )
 
   /**
@@ -182,7 +187,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
    */
   private val claimedChildren = mutableListOf<android.view.View>()
 
-  private val swipe =
+  private val swipe: SwipeActionsCallback =
     SwipeActionsCallback(
       actionsAt = adapter::swipeActionsAt,
       rowIdAt = adapter::rowIdAt,
@@ -221,6 +226,9 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     // header listener would otherwise claim a touch that lands under a pinned header.
     list.addOnItemTouchListener(swipe.touchListener())
     list.addItemDecoration(SwipeTrayDecoration(swipe))
+    // Restores the open row's displacement when its view comes back from a layout pass. Doing this
+    // from the decoration's draw would mutate a view mid-draw and loop.
+    list.addOnChildAttachStateChangeListener(swipe.attachStateListener())
     list.addOnScrollListener(scroll)
     list.addOnScrollListener(
       object : RecyclerView.OnScrollListener() {

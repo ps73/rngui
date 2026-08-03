@@ -27,6 +27,9 @@ data class RowStyle(
   /** `secondaryContainer` — what M3 puts behind a selected list item. */
   @ColorInt val selectedContainer: Int,
   @ColorInt val onSelectedContainer: Int,
+  /** `errorContainer` — what a destructive swipe action's button is filled with. */
+  @ColorInt val errorContainer: Int,
+  @ColorInt val onErrorContainer: Int,
   val labelTypeface: Typeface?,
   /** The list's default font. A row's own `font` falls back to this field by field. */
   val font: FontSpec?,
@@ -80,6 +83,16 @@ data class RowStyle(
           resolver.token(
             AppearanceResolver.COLOR_ON_SECONDARY_CONTAINER,
             if (dark) 0xFFE8DEF8.toInt() else 0xFF1D192B.toInt(),
+          ),
+        errorContainer =
+          resolver.token(
+            AppearanceResolver.COLOR_ERROR_CONTAINER,
+            if (dark) 0xFF8C1D18.toInt() else 0xFFF9DEDC.toInt(),
+          ),
+        onErrorContainer =
+          resolver.token(
+            AppearanceResolver.COLOR_ON_ERROR_CONTAINER,
+            if (dark) 0xFFF9DEDC.toInt() else 0xFF410E0B.toInt(),
           ),
         labelTypeface = null,
         font = resolver.font { it.font },

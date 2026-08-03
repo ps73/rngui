@@ -116,6 +116,8 @@ class AppearanceResolver(
     const val COLOR_ON_SECONDARY_CONTAINER = "colorOnSecondaryContainer"
     const val COLOR_SURFACE = "colorSurface"
     const val COLOR_SURFACE_CONTAINER = "colorSurfaceContainer"
+    const val COLOR_ERROR_CONTAINER = "colorErrorContainer"
+    const val COLOR_ON_ERROR_CONTAINER = "colorOnErrorContainer"
 
     fun isDark(configuration: Configuration, scheme: ColorScheme): Boolean =
       when (scheme) {
