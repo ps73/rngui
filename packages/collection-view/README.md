@@ -330,12 +330,18 @@ Accepted so shared screens keep type-checking, and deliberately doing nothing:
 | `keyboardDismissMode: 'interactive'`        | maps to `onDrag`. Android has no interactive dismissal                 |
 | `datePickerStyle: 'inline' \| 'wheels'`     | both fall back to the platform dialog, and warn once                   |
 
-### Not done yet
+### Insets and navigation headers
 
-`@rngui/collection-view/bottom-sheet` does not work on Android: the sheet renders and drags with the
-list inside it, but the list does not scroll and no scroll events reach JavaScript.
-`react-native-gesture-handler` asks the attached view whether it scrolls, and that view is this
-component's wrapper. Forwarding `canScrollVertically` was necessary and not sufficient.
+Content insets are computed from **how much system chrome actually overlaps the list**, not from the
+window's own insets. Under a transparent header the list starts at the top of the window and takes
+the full status-bar inset; under an ordinary opaque toolbar it starts below one already, and taking
+it again would leave a bar-shaped gap.
+
+What Android has no equivalent for is the _header's own_ height. On iOS
+`contentInsetAdjustmentBehavior: automatic` folds in the navigation bar because UIKit knows how tall
+it is; a toolbar's height is not a window inset, so `headerTransparent` on Android is a promise the
+list cannot keep on its own. Use an opaque header, or pass the height yourself through
+`contentInset={{ top }}`.
 
 ### Host rows
 

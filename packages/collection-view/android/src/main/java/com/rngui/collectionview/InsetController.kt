@@ -141,7 +141,7 @@ class InsetController(
       }
     }
 
-    val bars = if (adjustment == InsetAdjustment.never) Insets.NONE else systemBars
+    val bars = if (adjustment == InsetAdjustment.never) Insets.NONE else overlappingBars()
     val keyboard = if (adjustsForKeyboard) imeBottom else 0
 
     val paddingTop = root.context.dp(top) + bars.top
@@ -159,9 +159,39 @@ class InsetController(
       root.context.dp(right) + bars.right,
       paddingBottom,
     )
-    // Without this the rows are clipped at the padding edge and the inset reads as a margin — the
-    // list would appear to *start* below the bar rather than to pass under it.
     list.clipToPadding = false
     onInsetsChanged()
+  }
+
+  /**
+   * How much of the system chrome actually covers *this view*, rather than the window.
+   *
+   * The root window insets describe the window, and this list is rarely the whole of one. Under an
+   * opaque navigation header the content area already starts below the status bar, so adding the
+   * status-bar inset again leaves a bar-shaped gap under the toolbar — which is exactly what
+   * happened, and it looked like a styling mistake rather than an inset one. Under a *transparent*
+   * header the list does start at the top of the window and the full inset is right.
+   *
+   * Measuring the overlap covers both without asking anyone which case they are in, and it is the
+   * same rule UIKit's `contentInsetAdjustmentBehavior` follows: inset for the chrome that is
+   * actually in the way.
+   */
+  private fun overlappingBars(): Insets {
+    val location = IntArray(2)
+    root.getLocationInWindow(location)
+    val viewTop = location[1]
+    val viewBottom = viewTop + root.height
+    val windowHeight = root.rootView.height
+
+    // Before the first layout there is no geometry to measure, so fall back to the window's own
+    // insets — the pre-layout answer is only ever used for one frame.
+    if (root.height == 0 || windowHeight == 0) return systemBars
+
+    return Insets.of(
+      systemBars.left,
+      (systemBars.top - viewTop).coerceAtLeast(0),
+      systemBars.right,
+      (viewBottom - (windowHeight - systemBars.bottom)).coerceAtLeast(0),
+    )
   }
 }

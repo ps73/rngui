@@ -505,6 +505,16 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
    * scratch, which produces the right pixels by a far more expensive route. React Native's own
    * template declares it.
    */
+  /**
+   * Re-resolves the insets, because they depend on where this view sits rather than only on the
+   * window — see `InsetController.overlappingBars`. A view that has just been given its geometry
+   * has just changed the answer.
+   */
+  override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+    super.onSizeChanged(w, h, oldw, oldh)
+    insets.apply()
+  }
+
   override fun onConfigurationChanged(newConfig: Configuration) {
     super.onConfigurationChanged(newConfig)
     configuration = Configuration(newConfig)
