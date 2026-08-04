@@ -2,6 +2,7 @@ package com.rngui.collectionview
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
@@ -384,6 +385,49 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
   // still gets first refusal on the touch.
   init {
     list.addOnItemTouchListener(dismissOnTap)
+
+    // Recomputed whenever the visible rows change, which is the only time the answer can differ.
+    list.addOnScrollListener(
+      object : RecyclerView.OnScrollListener() {
+        override fun onScrolled(view: RecyclerView, dx: Int, dy: Int) = updateGestureExclusion()
+      }
+    )
+    list.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> updateGestureExclusion() }
+  }
+
+  /**
+   * Tells the system to keep its hands off horizontal gestures over swipeable rows.
+   *
+   * **Without this, swipe actions do not work at all on a gesture-navigation device**, and it is
+   * invisible on an emulator with three-button navigation. A right-to-left drag over a row is the
+   * same gesture as the system's back swipe, the system wins, and the app sees a back navigation
+   * where the user meant to reveal a delete button. Reported as "swipe actions do nothing" on a real
+   * phone; the tray never opened because the drag never reached the list.
+   *
+   * `systemGestureExclusionRects` is Android's own answer, and it is deliberately rationed: the
+   * platform honours **200dp per edge** and drops the rest, keeping the topmost rects. So this
+   * excludes only the rows that actually carry actions rather than the whole viewport — which is
+   * both what the budget is for and, on a list where every row is swipeable, a real limit worth
+   * knowing about: past roughly four rows' worth, the ones further down still lose to the back
+   * gesture near the edge.
+   *
+   * API 29+. Below that the back gesture does not exist, so there is nothing to exclude.
+   */
+  private fun updateGestureExclusion() {
+    if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return
+
+    val rects = ArrayList<Rect>()
+    for (index in 0 until list.childCount) {
+      val child = list.getChildAt(index)
+      val position = list.getChildAdapterPosition(child)
+      if (position == RecyclerView.NO_POSITION) continue
+      val (leading, trailing) = adapter.swipeActionsAt(position)
+      if (leading.isEmpty() && trailing.isEmpty()) continue
+      rects.add(Rect(0, child.top, list.width, child.bottom))
+    }
+
+    // Assigned even when empty, so a list that stops having swipeable rows stops claiming the edge.
+    list.systemGestureExclusionRects = rects
   }
 
   /**
