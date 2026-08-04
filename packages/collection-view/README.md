@@ -344,6 +344,13 @@ Decisions, not gaps. Each one is the platform's own idiom rather than the other'
 | Overscroll                      | rubber-band bounce                    | stretch or glow                                                                                                                                        |
 | `contentSize.height`            | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
 
+`keyboardShouldPersistTaps` is `ScrollView`'s prop by the same name — `never` (default), `always`,
+or `handled`, where "handled" means the row under the finger has an `onPress`. One deliberate
+difference from `ScrollView`: there, `never` also swallows the tap that dismissed the keyboard; here
+the row's `onPress` still fires, because the tap target _is_ the row and eating the first tap after
+typing reads as a dropped tap. `keyboardDismissMode` defaults to `onDrag` on both platforms, so
+scrolling dismisses.
+
 `contentOffset.y` is **exact on both**. On Android it is accumulated from `onScrolled`'s `dy` rather
 than read from `computeVerticalScrollOffset()`, which is an average-item-height estimate that does
 not return exactly zero at the top — and `@gorhom/bottom-sheet` compares it against `0`.

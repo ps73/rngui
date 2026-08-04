@@ -343,6 +343,10 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
     [_host setKeyboardAwareOffset:newViewProps.keyboardAwareOffset];
   }
 
+  if (oldViewProps.keyboardShouldPersistTaps != newViewProps.keyboardShouldPersistTaps) {
+    [_host setKeyboardShouldPersistTaps:(NSInteger)newViewProps.keyboardShouldPersistTaps];
+  }
+
   if (oldViewProps.keyboardDismissMode != newViewProps.keyboardDismissMode) {
     [_host setKeyboardDismissMode:(NSInteger)newViewProps.keyboardDismissMode];
   }

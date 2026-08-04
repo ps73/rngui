@@ -324,6 +324,83 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   private var keyboardDismissMode: KeyboardDismissMode = KeyboardDismissMode.onDrag
 
+  /** `ScrollView`'s prop of the same name. See `onRowPress`. */
+  enum class PersistTaps {
+    never,
+    always,
+    handled;
+
+    companion object {
+      fun from(raw: String?): PersistTaps =
+        when (raw) {
+          "always" -> always
+          "handled" -> handled
+          else -> never
+        }
+    }
+  }
+
+  var persistTaps: PersistTaps = PersistTaps.never
+
+  /**
+   * Ends editing on a tap, according to `keyboardShouldPersistTaps`.
+   *
+   * **An item-touch listener rather than the row-press callback, for the reason the iOS host uses a
+   * gesture recogniser.** `onRowPress` fires only for *selectable* rows, so hanging dismissal off it
+   * would leave a tap on a switch row, a disabled row or the gap between cards doing nothing — a
+   * keyboard that ignores half the screen is a worse bug than the one being fixed.
+   *
+   * `onInterceptTouchEvent` returning false throughout is what keeps this invisible: the touch is
+   * observed and then passed on untouched, so presses, switches and swipes behave exactly as they
+   * did.
+   */
+  private val dismissOnTap =
+    object : RecyclerView.OnItemTouchListener {
+      override fun onInterceptTouchEvent(view: RecyclerView, event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return false
+        if (persistTaps == PersistTaps.always) return false
+        if (list.findFocus() == null) return false
+
+        if (persistTaps == PersistTaps.handled) {
+          // Did the row under the finger have something to do with the tap? A row with an
+          // `onPress` is clickable; anything else — a decorative row, a switch row with no press,
+          // the gap between cards — is not.
+          val child = view.findChildViewUnder(event.x, event.y)
+          if (child != null && child.isClickable) return false
+        }
+
+        hideKeyboard()
+        return false
+      }
+
+      override fun onTouchEvent(view: RecyclerView, event: MotionEvent) = Unit
+
+      override fun onRequestDisallowInterceptTouchEvent(disallow: Boolean) = Unit
+    }
+
+  // A second `init`, and for the same reason the first one is where it is: Kotlin runs property
+  // initializers and init blocks top to bottom, so registering `dismissOnTap` in the constructor
+  // above would read it before it exists. Registered after the swipe listener, so an open tray
+  // still gets first refusal on the touch.
+  init {
+    list.addOnItemTouchListener(dismissOnTap)
+  }
+
+  /**
+   * Resigns focus from whatever holds it inside the list.
+   *
+   * `clearFocus` on the focused child rather than on the list, because clearing on a parent hands
+   * focus straight back down to the first focusable descendant — which on a form is the field that
+   * was just dismissed.
+   */
+  private fun hideKeyboard() {
+    val focused = list.findFocus() ?: return
+    focused.clearFocus()
+    (context.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+        as? android.view.inputmethod.InputMethodManager)
+      ?.hideSoftInputFromWindow(windowToken, 0)
+  }
+
   /** `keyboardAware` implies `automaticallyAdjustKeyboardInsets` — documented as a superset. */
   fun setKeyboardAware(value: Boolean) {
     keyboardAware = value

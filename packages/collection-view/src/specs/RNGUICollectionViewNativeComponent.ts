@@ -202,9 +202,17 @@ export interface NativeProps extends ViewProps {
   /** Extra breathing room above the focused row, in points. */
   keyboardAwareOffset?: Float
 
-  keyboardDismissMode?: WithDefault<
-    'none' | 'onDrag' | 'interactive',
-    'interactive'
+  keyboardDismissMode?: WithDefault<'none' | 'onDrag' | 'interactive', 'onDrag'>
+
+  /**
+   * Whether tapping a row keeps the keyboard up. `ScrollView`'s prop, same name, same values.
+   *
+   * `handled` is the one that carries real information here: a row with an `onPress` *handled* the
+   * tap, so the keyboard stays; a row without one did not, so it goes.
+   */
+  keyboardShouldPersistTaps?: WithDefault<
+    'never' | 'always' | 'handled',
+    'never'
   >
 
   // -------------------------------------------------------------------------

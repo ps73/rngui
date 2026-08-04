@@ -246,6 +246,13 @@ class RNGUICollectionViewManager :
     view.keyboardAwareOffset = value.toInt()
   }
 
+  override fun setKeyboardShouldPersistTaps(
+    view: RNGUICollectionViewView,
+    value: String?,
+  ) {
+    view.persistTaps = RNGUICollectionViewView.PersistTaps.from(value)
+  }
+
   override fun setKeyboardDismissMode(
     view: RNGUICollectionViewView,
     value: String?,

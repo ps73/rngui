@@ -204,7 +204,24 @@ public final class RNGUICollectionViewHost: NSObject {
     // `contentInsetAdjustmentBehavior`, whose default is `automatic` rather than `ScrollView`'s
     // `never` — see the note on the prop.
     collectionView.contentInsetAdjustmentBehavior = .automatic
-    collectionView.keyboardDismissMode = .interactive
+    // **`.onDrag`, not `.interactive`, and the difference is the whole of the reported bug.**
+    // `.interactive` dismisses only when you drag *the keyboard itself* downward; scrolling the
+    // list does nothing. So a field stayed focused through every scroll and every tap on another
+    // row, and the only gesture that closed it was the one almost nobody tries. `.onDrag` is also
+    // what the Android side has always defaulted to, so the two platforms now agree — a caller can
+    // still ask for `interactive` explicitly.
+    collectionView.keyboardDismissMode = .onDrag
+
+    // **A tap recogniser rather than the selection callback, and the difference is the point.**
+    // `didSelectItemAt` fires only for *selectable* rows, so hanging dismissal off it would leave a
+    // tap on a switch row, a disabled row or the gap between cards doing nothing — and a keyboard
+    // that ignores half the screen is a worse bug than the one being fixed.
+    //
+    // `cancelsTouchesInView = false` is what keeps it invisible: the tap still reaches whatever it
+    // was going to reach, so row presses, switches and swipes behave exactly as before.
+    let dismissTap = UITapGestureRecognizer(target: self, action: #selector(handleDismissTap(_:)))
+    dismissTap.cancelsTouchesInView = false
+    collectionView.addGestureRecognizer(dismissTap)
 
     keyboardObserver = KeyboardObserver(scrollView: collectionView)
     keyboardObserver.onChange = { [weak self] overlap, duration, options in
@@ -465,14 +482,41 @@ public final class RNGUICollectionViewHost: NSObject {
       //
       // Only in the `plain` appearance. A pinned header on a grouped list would slide over the
       // rounded cards, which is not a look iOS has anywhere.
-      if self.listAppearance == .plain {
-        let items = layoutSection.boundarySupplementaryItems
+      if self.listAppearance == .plain, section?.header != nil {
+        var items = layoutSection.boundarySupplementaryItems
+        var pinnedAny = false
         for item in items
         where item.elementKind == UICollectionView.elementKindSectionHeader {
           item.pinToVisibleBounds = true
           // Above the cells, or the rows scroll over the pinned header instead of under it.
           item.zIndex = 2
+          pinnedAny = true
         }
+
+        // **The fallback is the fix, and it is here because the mutation above is undocumented.**
+        // `.list(using:)` builds the header item internally from `headerMode`, and whether it then
+        // *exposes* that item through `boundarySupplementaryItems` has not been consistent across
+        // OS versions — on one where it does not, the loop finds nothing, pins nothing, and the
+        // headers scroll away with no error anywhere. That is exactly the shape of "sticky on 26,
+        // not on 18".
+        //
+        // So when the list configuration did not hand one over, supply one. `.estimated` rather
+        // than a constant because the header self-sizes against its own label, which is the part
+        // the list configuration knew and we do not.
+        if !pinnedAny {
+          let header = NSCollectionLayoutBoundarySupplementaryItem(
+            layoutSize: NSCollectionLayoutSize(
+              widthDimension: .fractionalWidth(1),
+              heightDimension: .estimated(28)
+            ),
+            elementKind: UICollectionView.elementKindSectionHeader,
+            alignment: .top
+          )
+          header.pinToVisibleBounds = true
+          header.zIndex = 2
+          items.append(header)
+        }
+
         // Reassigned rather than relying on mutating through the getter's references. The items
         // are objects, so mutation in place ought to be enough, but whether the section holds
         // those instances or copies of them is not documented — and a silently unpinned header
@@ -1588,6 +1632,50 @@ public final class RNGUICollectionViewHost: NSObject {
     keyboardAwareOffset = offset
   }
 
+  /**
+   * `ScrollView`'s prop of the same name, in the order codegen assigns its cases.
+   *
+   * An `Int` across the boundary because that is what a codegen string enum becomes; the mapping
+   * lives here rather than in the `.mm` so there is one table rather than two that must agree.
+   */
+  enum PersistTaps: Int {
+    case never = 0
+    case always = 1
+    case handled = 2
+  }
+
+  private var persistTaps: PersistTaps = .never
+
+  /**
+   * Resigns the first responder on a tap, according to `keyboardShouldPersistTaps`.
+   *
+   * `handled` asks whether the row under the finger would have *done* anything: a row with an
+   * `onPress` handled the tap, so the keyboard stays; a decorative row, a switch row with no press,
+   * or the background did not, so it goes. That is as close to `ScrollView`'s meaning as a list can
+   * get, where "the child" and "the row" are the same object.
+   */
+  @objc private func handleDismissTap(_ recognizer: UITapGestureRecognizer) {
+    guard collectionView.rnguiFindFirstResponder() != nil else { return }
+
+    switch persistTaps {
+    case .always:
+      return
+    case .never:
+      collectionView.endEditing(true)
+    case .handled:
+      let point = recognizer.location(in: collectionView)
+      let handled =
+        collectionView.indexPathForItem(at: point)
+        .flatMap { dataSource.itemIdentifier(for: $0) }
+        .flatMap { rowsById[$0]?.selectable } == true
+      if !handled { collectionView.endEditing(true) }
+    }
+  }
+
+  @objc public func setKeyboardShouldPersistTaps(_ raw: Int) {
+    persistTaps = PersistTaps(rawValue: raw) ?? .never
+  }
+
   @objc public func setKeyboardDismissMode(_ raw: Int) {
     switch raw {
     case 1: collectionView.keyboardDismissMode = .onDrag
@@ -2135,6 +2223,7 @@ extension RNGUICollectionViewHost: UICollectionViewDelegate {
   ) {
     collectionView.deselectItem(at: indexPath, animated: true)
     guard let rowId = dataSource.itemIdentifier(for: indexPath) else { return }
+
     onRowPress?(rowId)
   }
 

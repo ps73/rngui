@@ -200,6 +200,20 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
 
   keyboardDismissMode?: 'none' | 'onDrag' | 'interactive'
 
+  /**
+   * Whether tapping a row keeps the keyboard up — `ScrollView`'s prop, by the same name.
+   *
+   * - `never` (default) — a tap on any row resigns the focused field. What a settings screen does.
+   * - `always` — the keyboard stays up whatever is tapped.
+   * - `handled` — it stays only when the row *handled* the tap, meaning the row has an `onPress`.
+   *   A decorative row still dismisses.
+   *
+   * **One deliberate difference from `ScrollView`.** There, `never` also swallows the tap that
+   * dismissed the keyboard. Here the row's `onPress` fires regardless: the tap target *is* the row,
+   * and eating the first tap after typing reads as a dropped tap rather than as a dismissal.
+   */
+  keyboardShouldPersistTaps?: 'never' | 'always' | 'handled'
+
   /** Whether the list scrolls at all. Defaults to true, as `ScrollView` does. */
   scrollEnabled?: boolean
 
@@ -301,6 +315,7 @@ export function Root({
   keyboardAware,
   keyboardAwareOffset,
   keyboardDismissMode,
+  keyboardShouldPersistTaps,
   scrollEnabled,
   decelerationRate,
   onScroll,
@@ -534,6 +549,7 @@ export function Root({
         keyboardAware={keyboardAware}
         keyboardAwareOffset={keyboardAwareOffset}
         keyboardDismissMode={keyboardDismissMode}
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         scrollEnabled={scrollEnabled}
         decelerationRate={
           decelerationRate == null
