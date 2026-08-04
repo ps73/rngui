@@ -63,6 +63,7 @@
     "!**/.*"
   ],
   "scripts": {
+    "prepare": "bob build",
     "typecheck": "tsc --noEmit",
     "build": "bob build",
     "gen:swift-types": "node scripts/gen-swift-types.mjs",
