@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { CollectionView, type VisibleRange } from '@rngui/collection-view'
 import { buildContacts } from '../data/contacts'
 
@@ -12,10 +12,16 @@ import { buildContacts } from '../data/contacts'
  * - **Monogram avatars in colour.** Google draws a filled circle with the person's initials; iOS
  *   Contacts draws a grey person glyph. The circle is not decoration — it is what the eye tracks
  *   down a list of two thousand names, and a grey glyph repeated two thousand times is not.
- * - **No swipe-to-delete.** On iOS a swipe on a list row means "act on this row", and Contacts is
- *   the canonical example. Material assigns the same gesture to *dismiss*, and Google Contacts has
- *   no swipe at all — selection is long-press. Porting the swipe would have been the easy thing and
- *   the wrong one. The API is still exercised on Android: Reminders' subtasks swipe.
+ * - **Swipe-to-delete, against the local idiom and on purpose.** Google Contacts has no swipe —
+ *   Material assigns that gesture to *dismiss*, and selection there is long-press. This screen had
+ *   none for that reason, and now has it because the demo is worth more than the purity: swipe is
+ *   part of the public API and a 2,000-row list is where it is worth seeing. The README's platform
+ *   table still says what the idiomatic answer would be.
+ *
+ *   **It also demonstrates a real limit.** Android hands out only 200dp per edge of
+ *   `systemGestureExclusionRects`, so on a list where *every* row is swipeable the rows past the
+ *   first few still lose a near-edge drag to the system back gesture. Start the swipe away from the
+ *   edge and it works; that is the platform's budget, not this library's choice.
  * - **The scrubber is already different, and for free.** `sectionIndex` renders iOS's A–Z rail and
  *   Android's dragging thumb-with-bubble from one prop, because native decides — so this screen
  *   asks for the same thing the iOS one does and gets the local control.
@@ -47,9 +53,17 @@ const AVATAR_COLORS = [
 ] as const
 
 export default function ContactsScreenAndroid() {
+  /**
+   * Deleting is JavaScript's decision, exactly as on iOS.
+   *
+   * Native reports the tap and springs the row back; the row leaves on the *next* commit as an
+   * animated diff, so the layout and the data source never disagree about whether it is gone.
+   */
+  const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set())
+
   // Built once, and the avatars derived with it. Deriving initials and a colour per render would
   // put 2,000 string operations on every commit, which is exactly the cost this screen measures.
-  const sections = useMemo(() => {
+  const built = useMemo(() => {
     return buildContacts(CONTACT_COUNT).map((section) => ({
       letter: section.letter,
       contacts: section.contacts.map((contact) => ({
@@ -59,6 +73,20 @@ export default function ContactsScreenAndroid() {
       })),
     }))
   }, [])
+
+  const sections = useMemo(() => {
+    if (deleted.size === 0) return built
+    return (
+      built
+        .map((section) => ({
+          ...section,
+          contacts: section.contacts.filter((c) => !deleted.has(c.id)),
+        }))
+        // A section that loses every contact loses its letter too, and with it its stop on the
+        // fast scroller — which would otherwise scroll to a header with nothing under it.
+        .filter((section) => section.contacts.length > 0)
+    )
+  }, [built, deleted])
 
   const visibleRange = useRef<VisibleRange>({ firstIndex: -1, lastIndex: -1 })
 
@@ -97,6 +125,18 @@ export default function ContactsScreenAndroid() {
                 background={contact.color}
               />
               <CollectionView.Label>{contact.name}</CollectionView.Label>
+
+              <CollectionView.SwipeActions>
+                <CollectionView.SwipeAction
+                  id="delete"
+                  title="Delete"
+                  systemImage="trash"
+                  style="destructive"
+                  onPress={() =>
+                    setDeleted((previous) => new Set(previous).add(contact.id))
+                  }
+                />
+              </CollectionView.SwipeActions>
             </CollectionView.Row>
           ))}
         </CollectionView.Section>
