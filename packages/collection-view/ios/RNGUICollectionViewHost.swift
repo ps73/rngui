@@ -482,41 +482,37 @@ public final class RNGUICollectionViewHost: NSObject {
       //
       // Only in the `plain` appearance. A pinned header on a grouped list would slide over the
       // rounded cards, which is not a look iOS has anywhere.
-      if self.listAppearance == .plain, section?.header != nil {
-        var items = layoutSection.boundarySupplementaryItems
-        var pinnedAny = false
+      // Sticky alphabet headers — the Contacts behaviour, and the reason the `plain` appearance
+      // exists here at all.
+      //
+      // `pinToVisibleBounds` has to be set on the boundary item, and `NSCollectionLayoutSection`
+      // has no option for it: `.list(using:)` creates the header item internally from `headerMode`.
+      // The items are reference types and the array is exposed, so the one already built is reached
+      // and mutated rather than replaced — hand-rolling a replacement would mean guessing the
+      // header's height and insets, which is what the list configuration knows and we do not.
+      //
+      // **Known broken on iOS 18, and not yet fixed. Do not "obviously" fix it.** Two attempts have
+      // failed and both are recorded here so the third starts from evidence rather than from the
+      // same idea again:
+      //
+      //   1. *Appending* a pinned header when the loop found none — no effect, so the loop is
+      //      finding the configuration's item on 18 and setting `pinToVisibleBounds` on it simply
+      //      does not take.
+      //   2. *Replacing* it with a hand-built `.estimated(28)` item — worse: the header stopped
+      //      rendering at all on 18, so the supplementary provider is bound to the item the list
+      //      configuration made, not merely to its `elementKind`.
+      //
+      // Verified pinned on iOS 26.5 and unpinned on 18.6, both on the simulator. What is left to try
+      // is a `UICollectionViewCompositionalLayout` configuration-level boundary item, or dropping
+      // `.list(using:)` for `plain` and building the section by hand.
+      if self.listAppearance == .plain {
+        let items = layoutSection.boundarySupplementaryItems
         for item in items
         where item.elementKind == UICollectionView.elementKindSectionHeader {
           item.pinToVisibleBounds = true
           // Above the cells, or the rows scroll over the pinned header instead of under it.
           item.zIndex = 2
-          pinnedAny = true
         }
-
-        // **The fallback is the fix, and it is here because the mutation above is undocumented.**
-        // `.list(using:)` builds the header item internally from `headerMode`, and whether it then
-        // *exposes* that item through `boundarySupplementaryItems` has not been consistent across
-        // OS versions — on one where it does not, the loop finds nothing, pins nothing, and the
-        // headers scroll away with no error anywhere. That is exactly the shape of "sticky on 26,
-        // not on 18".
-        //
-        // So when the list configuration did not hand one over, supply one. `.estimated` rather
-        // than a constant because the header self-sizes against its own label, which is the part
-        // the list configuration knew and we do not.
-        if !pinnedAny {
-          let header = NSCollectionLayoutBoundarySupplementaryItem(
-            layoutSize: NSCollectionLayoutSize(
-              widthDimension: .fractionalWidth(1),
-              heightDimension: .estimated(28)
-            ),
-            elementKind: UICollectionView.elementKindSectionHeader,
-            alignment: .top
-          )
-          header.pinToVisibleBounds = true
-          header.zIndex = 2
-          items.append(header)
-        }
-
         // Reassigned rather than relying on mutating through the getter's references. The items
         // are objects, so mutation in place ought to be enough, but whether the section holds
         // those instances or copies of them is not documented — and a silently unpinned header
