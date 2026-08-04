@@ -473,39 +473,22 @@ public final class RNGUICollectionViewHost: NSObject {
       // Sticky alphabet headers — the Contacts behaviour, and the reason the `plain` appearance
       // exists here at all.
       //
-      // `pinToVisibleBounds` has to be set on the boundary item, and `NSCollectionLayoutSection`
-      // has no option for it: `.list(using:)` creates the header item internally from
-      // `headerMode`. What makes this work is that the items are reference types and the array is
-      // exposed, so the one already built can be reached and mutated rather than replaced —
-      // hand-rolling a replacement would mean guessing the header's height and insets, which is
-      // exactly what the list configuration knows and we do not.
+      // **Gated on iOS 26, and that gate is the price of swipe actions.** `pinToVisibleBounds` on a
+      // `.list(using:)` section does two things on iOS 18: it fails to pin, *and* it takes that
+      // section's swipe actions with it. Both symptoms, one cause — proven by the fact that swipe
+      // works on 18 in a grouped list, which never reaches this block, and fails in a plain one,
+      // which does. Setting it and hoping was costing a working feature to buy a broken one.
       //
-      // Only in the `plain` appearance. A pinned header on a grouped list would slide over the
-      // rounded cards, which is not a look iOS has anywhere.
-      // Sticky alphabet headers — the Contacts behaviour, and the reason the `plain` appearance
-      // exists here at all.
+      // So below 26 the headers scroll with their rows. That is a visible loss and the honest
+      // trade: an alphabet header that does not stick is a cosmetic difference, and a swipe action
+      // that never opens is a function the caller asked for and did not get.
       //
-      // `pinToVisibleBounds` has to be set on the boundary item, and `NSCollectionLayoutSection`
-      // has no option for it: `.list(using:)` creates the header item internally from `headerMode`.
-      // The items are reference types and the array is exposed, so the one already built is reached
-      // and mutated rather than replaced — hand-rolling a replacement would mean guessing the
-      // header's height and insets, which is what the list configuration knows and we do not.
-      //
-      // **Known broken on iOS 18, and not yet fixed. Do not "obviously" fix it.** Two attempts have
-      // failed and both are recorded here so the third starts from evidence rather than from the
-      // same idea again:
-      //
-      //   1. *Appending* a pinned header when the loop found none — no effect, so the loop is
-      //      finding the configuration's item on 18 and setting `pinToVisibleBounds` on it simply
-      //      does not take.
-      //   2. *Replacing* it with a hand-built `.estimated(28)` item — worse: the header stopped
-      //      rendering at all on 18, so the supplementary provider is bound to the item the list
-      //      configuration made, not merely to its `elementKind`.
-      //
-      // Verified pinned on iOS 26.5 and unpinned on 18.6, both on the simulator. What is left to try
-      // is a `UICollectionViewCompositionalLayout` configuration-level boundary item, or dropping
-      // `.list(using:)` for `plain` and building the section by hand.
-      if self.listAppearance == .plain {
+      // Ruled out along the way, so nobody re-tries them: appending a pinned item when the loop
+      // finds none (no effect — the loop does find the configuration's item), replacing it with a
+      // hand-built one (worse — the header stops rendering, so the supplementary provider is bound
+      // to the configuration's item rather than to its `elementKind`), writing the array back
+      // (irrelevant), and `zIndex` alone (irrelevant).
+      if self.listAppearance == .plain, #available(iOS 26.0, *) {
         let items = layoutSection.boundarySupplementaryItems
         for item in items
         where item.elementKind == UICollectionView.elementKindSectionHeader {
@@ -513,10 +496,6 @@ public final class RNGUICollectionViewHost: NSObject {
           // Above the cells, or the rows scroll over the pinned header instead of under it.
           item.zIndex = 2
         }
-        // Reassigned rather than relying on mutating through the getter's references. The items
-        // are objects, so mutation in place ought to be enough, but whether the section holds
-        // those instances or copies of them is not documented — and a silently unpinned header
-        // is indistinguishable from having never written this at all.
         layoutSection.boundarySupplementaryItems = items
       }
 

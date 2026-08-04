@@ -333,6 +333,7 @@ Decisions, not gaps. Each one is the platform's own idiom rather than the other'
 | `plain` + pinned headers        | free from compositional layout        | a hand-written `ItemDecoration`, with push-off                                                                                                         |
 | `systemImage`                   | SF Symbols                            | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
 | Section index                   | an A–Z rail                           | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
+| `plain` pinned headers          | **iOS 26+ only** — see below          | always pinned, via a hand-written `ItemDecoration`                                                                                                     |
 | Swipe actions                   | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
 | `datePickerStyle: 'wheels'`     | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
 | `datePickerMode: 'dateAndTime'` | one combined wheel                    | two dialogs, chained — Material has no combined picker                                                                                                 |
@@ -350,6 +351,14 @@ difference from `ScrollView`: there, `never` also swallows the tap that dismisse
 the row's `onPress` still fires, because the tap target _is_ the row and eating the first tap after
 typing reads as a dropped tap. `keyboardDismissMode` defaults to `onDrag` on both platforms, so
 scrolling dismisses.
+
+**Sticky headers in a `plain` list need iOS 26.** Below that they scroll with their rows, and the
+reason is a trade rather than an omission: `pinToVisibleBounds` on a `.list(using:)` section does
+not pin on iOS 18 _and_ it silently disables that section's swipe actions. Both symptoms, one
+cause — swipe works on 18 in a grouped list, which never sets the pin, and fails in a plain one,
+which did. Setting it was costing a working feature to buy a broken one, so it is now gated on 26.
+Android is unaffected: its pinned headers are drawn by an `ItemDecoration` of our own and owe
+nothing to UIKit.
 
 `contentOffset.y` is **exact on both**. On Android it is accumulated from `onScrolled`'s `dy` rather
 than read from `computeVerticalScrollOffset()`, which is an average-item-height estimate that does
