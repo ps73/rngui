@@ -14,7 +14,7 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:kotlin --workspaces --if-present",
     "build": "npm run build --workspaces --if-present",
     "gen": "npm run gen:swift-types --workspaces --if-present && npm run gen:kotlin-types --workspaces --if-present && npm run gen:material-symbols --workspaces --if-present",
     "verify": "npm run typecheck && npm run verify:swift-types --workspaces --if-present && npm run verify:kotlin-types --workspaces --if-present && npm run verify:material-symbols --workspaces --if-present && npm run test",

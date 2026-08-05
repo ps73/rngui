@@ -5,8 +5,8 @@ Native UI components for React Native. Each component is a genuine platform view
 
 ## Packages
 
-| Package                                                     | What it is                                                                              |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Package                                                     | What it is                                                                                 |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | [`@rngui/collection-view`](packages/collection-view#readme) | A real iOS `UICollectionView`; Android `RecyclerView` + Material 3 Expressive to follow |
 
 Install only what you use:
@@ -69,11 +69,22 @@ clipped, hit-tested and scrolled by UIKit for free.
 
 ```bash
 npm install                  # links every workspace
-npm run verify               # typecheck, regenerate the Swift model, run its contract tests
+npm run verify               # typecheck, regenerate both native models, run every unit test
 npm run ios                  # builds and runs the example on a simulator
-npm run android              # ditto, against the Android stub
+npm run android              # ditto, on an emulator
 npm run lint                 # prettier --check
 ```
+
+`verify` covers the Kotlin tests too, but they need `apps/example/android` — which `expo prebuild`
+generates and git does not track — and an `ANDROID_HOME`. Without both it says so and skips them
+rather than failing, so a machine with only Node and Xcode still verifies everything else.
+
+The same checks run in CI as the [Verify workflow](.github/workflows/verify.yml), which is
+**manual only**: this repository is private, a macOS runner costs ten times a Linux one, and the
+Kotlin job pays for a prebuild before it can assert anything. Start it from the Actions tab before
+merging a branch or cutting a release — the Swift and Kotlin jobs each have a checkbox, so a
+TypeScript-only change need not pay for either. CI passes `--require`, so there a skipped Kotlin
+run is a failure rather than a shrug.
 
 Packages are consumed **from source**: each points `source`/`react-native` at `src/index`,
 and the example's Metro config watches the repo root. Editing TypeScript needs no rebuild;
