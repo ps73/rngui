@@ -222,6 +222,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     SwipeActionsCallback(
       actionsAt = adapter::swipeActionsAt,
       rowIdAt = adapter::rowIdAt,
+      positionOfRow = adapter::positionOfRow,
       style = adapter::currentStyle,
       onAction = rowEvents::onSwipeAction,
     )
@@ -260,6 +261,9 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     // Restores the open row's displacement when its view comes back from a layout pass. Doing this
     // from the decoration's draw would mutate a view mid-draw and loop.
     list.addOnChildAttachStateChangeListener(swipe.attachStateListener())
+    // Keeps the open tray pointed at the row it was opened on rather than at whatever has since
+    // moved into its slot — see `SwipeActionsCallback.openRowId`.
+    adapter.registerAdapterDataObserver(swipe.dataObserver(list))
     list.addOnScrollListener(scroll)
     list.addOnScrollListener(
       object : RecyclerView.OnScrollListener() {
@@ -426,9 +430,20 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       rects.add(Rect(0, child.top, list.width, child.bottom))
     }
 
-    // Assigned even when empty, so a list that stops having swipeable rows stops claiming the edge.
+    // Assigned only when it would say something new.
+    //
+    // This runs from `onScrolled`, so it runs on every frame of every fling — and the assignment is
+    // not a field write: it posts to `ViewRootImpl` and ends up crossing to WindowManager. On the
+    // overwhelmingly common list, the one with no swipe actions anywhere, that was handing the same
+    // empty list across that boundary a hundred times a second forever. Comparing first costs a
+    // walk of a few visible rects, which is what was already built to get here.
+    if (rects == exclusionRects) return
+    exclusionRects = rects
     list.systemGestureExclusionRects = rects
   }
+
+  /** The last set handed to the system, so an unchanged one is not handed over again. */
+  private var exclusionRects: List<Rect> = emptyList()
 
   /**
    * Resigns focus from whatever holds it inside the list.
@@ -746,6 +761,11 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     } else {
       adapter.restyle(RowStyle.of(resolver), list)
     }
+    // Everything the list draws that is *not* a row. Both hold colours resolved for a mode and
+    // both were only ever refreshed from `commitProps`, so a system flip — which commits nothing —
+    // left a pinned header and a scrubber thumb in the old palette on top of repainted rows.
+    stickyHeaders.restyle()
+    sectionIndex.restyle(list)
     applyBackground()
     // The decoration draws from `onDraw`, which only runs on a draw pass — and a restyle that
     // changes nothing about layout would not schedule one.

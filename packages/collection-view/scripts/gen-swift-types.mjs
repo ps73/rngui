@@ -149,7 +149,10 @@ out.push(`// Generated from src/tree.ts by scripts/gen-swift-types.mjs. Do not e
 //
 // Run \`npm run gen:swift-types\` after changing the descriptor types. The output is committed
 // on purpose: \`pod install\` must not require Node, and a schema change should be visible in a
-// diff. CI fails if this file is stale.
+// diff.
+//
+// \`npm run verify\` regenerates and fails on any diff, so a stale copy cannot pass it. Nothing
+// runs that automatically — this repository has no CI — so it is a check somebody has to invoke.
 //
 // Every field decodes leniently. \`JSONDecoder\` fails an entire payload on one unknown enum
 // case or missing key, and \`expo-updates\` can ship a JS bundle newer than the native binary

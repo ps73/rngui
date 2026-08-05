@@ -131,6 +131,8 @@ class RNGUICollectionViewManager :
       RowValueEvent.DATE to MapBuilder.of("registrationName", "onDateChange"),
       RowValueEvent.MENU to MapBuilder.of("registrationName", "onMenuSelect"),
       RowValueEvent.SWIPE to MapBuilder.of("registrationName", "onSwipeAction"),
+      RowValueEvent.SLIDER to MapBuilder.of("registrationName", "onSliderChange"),
+      RowValueEvent.SLIDER_COMMIT to MapBuilder.of("registrationName", "onSliderCommit"),
       VisibleRangeChangeEvent.NAME to MapBuilder.of("registrationName", "onVisibleRangeChange"),
     )
 

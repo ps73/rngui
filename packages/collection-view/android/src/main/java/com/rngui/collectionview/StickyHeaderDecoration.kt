@@ -50,6 +50,26 @@ class StickyHeaderDecoration(
     pinnedSectionId = null
   }
 
+  /**
+   * Throws the cached header away so the next draw builds a new one against the current mode.
+   *
+   * **Without this the pinned header keeps the palette it was created with.** [headerView]
+   * short-circuits on `position == boundPosition`, which is true on every frame after the first —
+   * so a system dark-mode flip repainted every row and left the header pinned above them still
+   * drawing the light one. It was only ever reached through `update`, and `update` is only reached
+   * from a commit; the flip arrives on `onConfigurationChanged` and `onAttachedToWindow`, which
+   * commit nothing.
+   *
+   * The holder is dropped rather than just rebound, for the same reason `CollectionAdapter.retheme`
+   * rebuilds instead of rebinding: the view was inflated against a themed context that carries the
+   * old mode, and no amount of rebinding changes what it was constructed with. One view, once per
+   * flip.
+   */
+  fun restyle() {
+    headerHolder = null
+    boundPosition = RecyclerView.NO_POSITION
+  }
+
   override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
     pinnedRect.setEmpty()
     pinnedSectionId = null

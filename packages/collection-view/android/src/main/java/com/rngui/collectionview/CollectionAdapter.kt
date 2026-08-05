@@ -207,6 +207,22 @@ class CollectionAdapter(
 
   fun rowIdAt(position: Int): String? = (itemAtOrNull(position) as? Item.Row)?.row?.id
 
+  /**
+   * Where a row id sits now, or `NO_POSITION` if it is no longer in the list.
+   *
+   * The inverse of [rowIdAt], and a linear scan on purpose: the only caller is
+   * `SwipeActionsCallback.rebase`, which runs when the list changes *and* a tray is open — rare
+   * enough that an index kept up to date on every commit would cost more than it saved. `FlattenedTree`
+   * already guarantees ids are unique, so the first match is the only match.
+   */
+  fun positionOfRow(rowId: String): Int {
+    for (position in 0 until itemCount) {
+      val item = itemAtOrNull(position)
+      if (item is Item.Row && item.row.id == rowId) return position
+    }
+    return RecyclerView.NO_POSITION
+  }
+
   fun currentStyle(): RowStyle = style
 
   class LabelHolder(private val text: TextView) : RecyclerView.ViewHolder(text) {

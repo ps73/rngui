@@ -69,6 +69,7 @@
     "gen:swift-types": "node scripts/gen-swift-types.mjs",
     "gen:kotlin-types": "node scripts/gen-kotlin-types.mjs",
     "test": "swift test",
+    "test:kotlin": "cd ../../apps/example/android && ./gradlew :rngui_collection-view:test",
     "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests",
     "verify:kotlin-types": "node scripts/gen-kotlin-types.mjs && git diff --exit-code -- android/src/main/java/com/rngui/collectionview/generated android/src/test",
     "gen:material-symbols": "node scripts/gen-material-symbols.mjs",

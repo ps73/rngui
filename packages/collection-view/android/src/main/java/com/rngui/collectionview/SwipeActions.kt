@@ -42,11 +42,35 @@ import kotlin.math.min
 class SwipeActionsCallback(
   private val actionsAt: (position: Int) -> Pair<List<SwipeActionSpec>, List<SwipeActionSpec>>,
   private val rowIdAt: (position: Int) -> String?,
+  private val positionOfRow: (rowId: String) -> Int,
   private val style: () -> RowStyle,
   private val onAction: (rowId: String, actionId: String) -> Unit,
 ) : ItemTouchHelper.SimpleCallback(0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT) {
 
-  /** Which row is held open, and how far. Zero displacement means nothing is open. */
+  /**
+   * *Which row* is held open — the identity, not the slot.
+   *
+   * **This is the open tray's source of truth, and [openPosition] is only a cache of it.** An
+   * adapter position is a statement about the list as it was when the finger lifted, and the list
+   * can change under an open tray for reasons that have nothing to do with it: any commit at all —
+   * a parent re-render, a navigation focus effect, a `colorScheme` flip — can insert or remove rows
+   * above this one. The tray would then be drawn beside a *different* row and, worse, the tap would
+   * be routed to whichever id had moved into the remembered slot. On the example's Contacts screen
+   * that is a delete against the wrong contact.
+   *
+   * The deleting path itself was always safe, because `close()` runs before the commit that removes
+   * the row — which is exactly why this survived manual testing.
+   */
+  internal var openRowId: String? = null
+    private set
+
+  /**
+   * Where [openRowId] currently sits, cached so the hot paths do not have to search for it.
+   *
+   * [translationFor] is called once per bind and the attach listener once per row coming back on
+   * screen; both need the answer immediately, and neither can afford a scan of the list. [rebase]
+   * is what keeps this honest whenever the list moves underneath it.
+   */
   internal var openPosition = RecyclerView.NO_POSITION
     private set
 
@@ -155,6 +179,17 @@ class SwipeActionsCallback(
       return
     }
 
+    // The identity first, and no tray without one: a row whose id cannot be read is a row whose
+    // action could never be dispatched anyway, so holding it open would only offer buttons that
+    // do nothing.
+    val rowId = rowIdAt(position)
+    if (rowId == null) {
+      holder.itemView.translationX = 0f
+      if (openPosition == position) close(parent)
+      return
+    }
+
+    openRowId = rowId
     openPosition = position
     openDx = if (dx < 0) -trayWidth else trayWidth
     // Set rather than animated: the finger just lifted somewhere near this position, so the
@@ -163,9 +198,55 @@ class SwipeActionsCallback(
     parent.invalidate()
   }
 
+  /**
+   * Re-points the open tray at wherever its row went, and drops it if the row is gone.
+   *
+   * **Called on every adapter change**, because that is the only moment [openPosition] can become a
+   * lie — see [openRowId]. Resolving by identity means an unrelated commit no longer moves the tray
+   * onto a neighbour: the rows shift, the cached slot is corrected, and the tray stays on the row
+   * the user opened.
+   *
+   * Nothing is animated here. This runs inside the adapter's own change dispatch, where the view
+   * for a removed row is mid-removal and the one for a moved row may not have been laid out at its
+   * new position yet — so the state is corrected and the next draw is left to place it.
+   */
+  /**
+   * Calls [rebase] on every change that can move a row.
+   *
+   * A factory beside [attachStateListener] and [touchListener], for the same reason those are: the
+   * host registers it and nothing else needs to know the shape of it. `onItemRangeChanged` is
+   * deliberately not overridden — a payload change rebinds a row without moving it.
+   */
+  fun dataObserver(parent: RecyclerView): RecyclerView.AdapterDataObserver =
+    object : RecyclerView.AdapterDataObserver() {
+      override fun onChanged() = rebase(parent)
+
+      override fun onItemRangeInserted(positionStart: Int, itemCount: Int) = rebase(parent)
+
+      override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) = rebase(parent)
+
+      override fun onItemRangeMoved(fromPosition: Int, toPosition: Int, itemCount: Int) =
+        rebase(parent)
+    }
+
+  fun rebase(parent: RecyclerView) {
+    val rowId = openRowId ?: return
+    val next = positionOfRow(rowId)
+    if (next == RecyclerView.NO_POSITION) {
+      openRowId = null
+      openPosition = RecyclerView.NO_POSITION
+      openDx = 0f
+      hitRects.clear()
+    } else {
+      openPosition = next
+    }
+    parent.invalidate()
+  }
+
   /** Springs the open row shut, and animates it because nothing else is moving at that moment. */
   fun close(parent: RecyclerView) {
     val position = openPosition
+    openRowId = null
     openPosition = RecyclerView.NO_POSITION
     openDx = 0f
     hitRects.clear()
@@ -280,7 +361,10 @@ class SwipeActionsCallback(
           return true
         }
 
-        rowIdAt(openPosition)?.let { onAction(it, hit.second.id) }
+        // The remembered id, not a fresh lookup by position. Reading the row out of the slot is
+        // what made this dispatchable against the wrong row in the first place: by the time a tap
+        // arrives, the list may have moved and the slot may belong to somebody else.
+        openRowId?.let { onAction(it, hit.second.id) }
         close(view)
         return true
       }

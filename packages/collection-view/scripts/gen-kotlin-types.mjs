@@ -275,7 +275,9 @@ out.push(`// Generated from src/tree.ts by scripts/gen-kotlin-types.mjs. Do not 
 //
 // Run \`npm run gen:kotlin-types\` after changing the descriptor types. The output is committed on
 // purpose: a Gradle sync must not require Node, and a schema change should be visible in a diff.
-// CI fails if this file is stale.
+//
+// \`npm run verify\` regenerates and fails on any diff, so a stale copy cannot pass it. Nothing
+// runs that automatically — this repository has no CI — so it is a check somebody has to invoke.
 //
 // Every field decodes leniently, and an unrecognised enum value degrades to \`unknown\` rather
 // than failing the payload. \`expo-updates\` can ship a JS bundle newer than the native binary it

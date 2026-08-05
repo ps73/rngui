@@ -70,7 +70,6 @@ class SectionIndexView(context: Context, private val list: RecyclerView) : View(
     }
 
   init {
-    list.addOnScrollListener(scrollListener)
     visibility = GONE
   }
 
@@ -78,8 +77,20 @@ class SectionIndexView(context: Context, private val list: RecyclerView) : View(
     // Only sections that offered a letter. An unindexed section is not a blank stop; it simply is
     // not a stop.
     sections = tree.sections.filter { !it.indexTitle.isNullOrEmpty() }
-    this.style = style
     visibility = if (enabled && sections.size > 1) VISIBLE else GONE
+    restyle(style)
+  }
+
+  /**
+   * Re-resolves the three paints, leaving the sections and visibility alone.
+   *
+   * **A resolved colour is an `Int` and an `Int` does not know what mode produced it** — the same
+   * reason the rows have to be rebound. These were only ever set from [update], which a commit
+   * reaches and a system mode flip does not, so the thumb and its bubble went on drawing the old
+   * palette over a list that had already repainted underneath them.
+   */
+  fun restyle(style: ListStyle) {
+    this.style = style
     thumbPaint.color = style.labelColor and 0x00FFFFFF or (0x66 shl 24)
     bubblePaint.color = style.labelColor
     textPaint.color = style.backgroundColor
@@ -153,6 +164,19 @@ class SectionIndexView(context: Context, private val list: RecyclerView) : View(
 
     invalidate()
     return true
+  }
+
+  /**
+   * Subscribes on attach rather than once in `init`, because the detach is not the end.
+   *
+   * `react-native-screens` detaches every screen that is not on top — see the note on
+   * `RNGUICollectionViewView.onAttachedToWindow`, which exists for the same reason. Removing the
+   * listener on detach and adding it only in the constructor meant a tab left and returned to came
+   * back with a thumb frozen wherever it was when the tab went away, tracking nothing.
+   */
+  override fun onAttachedToWindow() {
+    super.onAttachedToWindow()
+    list.addOnScrollListener(scrollListener)
   }
 
   override fun onDetachedFromWindow() {
