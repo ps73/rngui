@@ -21,12 +21,27 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: 'com.rngui.example',
     supportsTablet: true,
-    deploymentTarget: '26.0',
+    /**
+     * The floor the *example* runs on, not the library's.
+     *
+     * `RNGUICollectionView.podspec` uses React Native's `min_ios_version_supported`, so the package
+     * itself has never required 26 — this number was the app's alone, and it made the app
+     * uninstallable on every device older than the machine it was developed against. iOS 26's
+     * scroll edge effects are still asked for in `nav/screen-options.ts`; react-native-screens
+     * no-ops them below 26 rather than failing, which is what makes one target serve both.
+     */
+    deploymentTarget: '18.0',
   },
   android: {
     package: 'com.rngui.example',
   },
   plugins: [
+    // The tab bar's Android icons. A native tab bar draws the platform's own, so the SF Symbol
+    // names in `(tabs)/_layout.tsx` need Android drawables beside them — see the plugin.
+    './plugins/with-tab-drawables',
+    // Instrumented tests against the real component — the only place a live React instance exists,
+    // and therefore the only place two of its code paths can be covered. See the plugin.
+    './plugins/with-instrumented-tests',
     'expo-router',
     'expo-status-bar',
     [

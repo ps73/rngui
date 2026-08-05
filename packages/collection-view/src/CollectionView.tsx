@@ -24,7 +24,7 @@ import {
   normalizeAppearance,
   type InheritedAppearance,
 } from './appearance'
-import type { Appearance, ListAppearance, Tree } from './tree'
+import type { AndroidListStyle, Appearance, ListAppearance, Tree } from './tree'
 
 export type ColorScheme = 'system' | 'light' | 'dark'
 
@@ -89,6 +89,20 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
   ref?: Ref<CollectionViewInstance>
   /** `insetGrouped` is the iOS Settings look, and the default. */
   listAppearance?: ListAppearance
+
+  /**
+   * How Material 3 arranges the items on **Android**. Ignored on iOS.
+   *
+   * `standard` sits items flush with dividers between them; `segmented` gives each its own rounded
+   * container with a gap, and a selected item a larger radius and the `secondaryContainer` colour.
+   * Both are in the [M3 list spec](https://m3.material.io/components/lists/specs), and the spec is
+   * explicit that the choice is visual rather than behavioural.
+   *
+   * Unset follows `listAppearance`: `segmented` for the grouped appearances, `standard` for
+   * `plain`. That is the mapping that makes a screen written for iOS look right on Android without
+   * a second prop, which is why this exists as an override rather than a requirement.
+   */
+  androidListStyle?: AndroidListStyle
 
   /**
    * Colour, spacing and typography overrides. Anything left unset keeps the platform's own
@@ -186,6 +200,20 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
 
   keyboardDismissMode?: 'none' | 'onDrag' | 'interactive'
 
+  /**
+   * Whether tapping a row keeps the keyboard up — `ScrollView`'s prop, by the same name.
+   *
+   * - `never` (default) — a tap on any row resigns the focused field. What a settings screen does.
+   * - `always` — the keyboard stays up whatever is tapped.
+   * - `handled` — it stays only when the row *handled* the tap, meaning the row has an `onPress`.
+   *   A decorative row still dismisses.
+   *
+   * **One deliberate difference from `ScrollView`.** There, `never` also swallows the tap that
+   * dismissed the keyboard. Here the row's `onPress` fires regardless: the tap target *is* the row,
+   * and eating the first tap after typing reads as a dropped tap rather than as a dismissal.
+   */
+  keyboardShouldPersistTaps?: 'never' | 'always' | 'handled'
+
   /** Whether the list scrolls at all. Defaults to true, as `ScrollView` does. */
   scrollEnabled?: boolean
 
@@ -256,35 +284,7 @@ let nextRevision = 1
  */
 const GROUPED_CARD_MARGIN = 16
 
-/**
- * Android is a stub: the view manager accepts every prop and draws nothing.
- *
- * Warned about here rather than logged from Kotlin, because the person who needs to read it is
- * writing JavaScript — and because Metro surfaces this in the same console as everything else,
- * while `Log.w` needs logcat. Once per process: this is a property of the platform, not of a
- * particular list, so one warning per mounted `Root` would be noise.
- */
-let warnedAboutAndroid = false
-
-/**
- * Whether this platform can place a hosted React child inside a cell.
- *
- * Written as "is iOS" rather than "is not Android" on purpose: hosting is a capability that has to
- * be built per platform, so a platform this library has never heard of should inherit "no", not
- * "yes".
- */
-const HOSTS_CHILDREN = Platform.OS === 'ios'
-
-function warnIfAndroid() {
-  if (!__DEV__ || Platform.OS !== 'android' || warnedAboutAndroid) return
-  warnedAboutAndroid = true
-  console.warn(
-    '[@rngui/collection-view] Android is not implemented yet — <CollectionView.Root> renders ' +
-      'nothing on this platform, including any <CollectionView.Host> children. The props are ' +
-      'accepted so shared screens keep type-checking and building; the RecyclerView backend is ' +
-      'still to come.'
-  )
-}
+const HOSTS_CHILDREN = Platform.OS === 'ios' || Platform.OS === 'android'
 
 /**
  * A real `UICollectionView`.
@@ -300,6 +300,7 @@ export function Root({
   ref,
   style,
   listAppearance,
+  androidListStyle,
   appearance,
   darkAppearance,
   inverted = false,
@@ -314,6 +315,7 @@ export function Root({
   keyboardAware,
   keyboardAwareOffset,
   keyboardDismissMode,
+  keyboardShouldPersistTaps,
   scrollEnabled,
   decelerationRate,
   onScroll,
@@ -323,8 +325,6 @@ export function Root({
   children,
   ...rest
 }: RootProps) {
-  warnIfAndroid()
-
   /**
    * Heights read off mounted `Host` subtrees, for the rows that did not state one.
    *
@@ -391,6 +391,7 @@ export function Root({
     // Omitted rather than set to undefined: `JSON.stringify` drops undefined keys anyway, but
     // being explicit keeps the payload minimal and the intent obvious.
     if (listAppearance != null) tree.listAppearance = listAppearance
+    if (androidListStyle != null) tree.androidListStyle = androidListStyle
     if (resolved.light != null) tree.appearance = resolved.light
     if (resolved.dark != null) tree.darkAppearance = resolved.dark
 
@@ -403,7 +404,7 @@ export function Root({
     const sent = { json: next, revision: nextRevision++ }
     lastSent.current = sent
     return sent
-  }, [serialized.sections, listAppearance, resolved])
+  }, [serialized.sections, listAppearance, androidListStyle, resolved])
 
   // The horizontal inset UIKit gives a grouped section's card on iPhone. A constant because it is
   // UIKit's metric, not ours, and it is not exposed anywhere queryable.
@@ -477,6 +478,18 @@ export function Root({
         const { rowId, millis } = event.nativeEvent
         registryRef.current.dateChange.get(rowId)?.(millis)
       },
+      onSliderChange: (
+        event: NativeSyntheticEvent<{ rowId: string; value: number }>
+      ) => {
+        const { rowId, value } = event.nativeEvent
+        registryRef.current.sliderChange.get(rowId)?.(value)
+      },
+      onSliderCommit: (
+        event: NativeSyntheticEvent<{ rowId: string; value: number }>
+      ) => {
+        const { rowId, value } = event.nativeEvent
+        registryRef.current.sliderCommit.get(rowId)?.(value)
+      },
       onMenuSelect: (
         event: NativeSyntheticEvent<{ rowId: string; itemId: string }>
       ) => {
@@ -536,6 +549,7 @@ export function Root({
         keyboardAware={keyboardAware}
         keyboardAwareOffset={keyboardAwareOffset}
         keyboardDismissMode={keyboardDismissMode}
+        keyboardShouldPersistTaps={keyboardShouldPersistTaps}
         scrollEnabled={scrollEnabled}
         decelerationRate={
           decelerationRate == null
@@ -563,9 +577,9 @@ export function Root({
         {...handlers}
       >
         {/*
-          Only iOS mounts hosted children, and the omission elsewhere is deliberate rather than a
-          guard against a crash. Every host wrapper is positioned absolutely with no `top`, because
-          on iOS the cell that claims it supplies the vertical position; with no cells to claim
+          Withheld on platforms that cannot claim them, and the omission is deliberate rather than
+          a guard against a crash. Every host wrapper is positioned absolutely with no `top`, because
+          the cell that claims it supplies the vertical position; with no cells to claim
           them they would all pile up at the origin, which reads as a broken implementation rather
           than an unimplemented one. Withheld here rather than hidden natively so the subtree is
           never mounted at all — no effects, no timers, no work for content nobody can see.

@@ -26,6 +26,69 @@ enum IconTile {
    */
   private static let cache = NSCache<NSString, UIImage>()
 
+  /**
+   * A monogram avatar: initials on a filled **circle**.
+   *
+   * **Circular where the symbol tile is a squircle, and that is not an inconsistency.** The two
+   * containers are different objects with different histories — the rounded square is Settings'
+   * icon tile, and the circle is what every address book on either platform puts a person in.
+   * Contacts draws circles on iOS exactly as it does on Android, so this one shape is right in both
+   * places while the tile above is right in only one.
+   */
+  static func image(monogram: String, background: UIColor) -> UIImage? {
+    let key = "monogram:\(monogram)|\(background)|\(edge)" as NSString
+    if let cached = cache.object(forKey: key) { return cached }
+
+    let asset = UIImageAsset()
+    for style: UIUserInterfaceStyle in [.light, .dark] {
+      let traits = UITraitCollection(userInterfaceStyle: style)
+      guard let rendered = render(monogram: monogram, background: background, traits: traits)
+      else { return nil }
+      asset.register(rendered, with: traits)
+    }
+
+    let image = asset.image(with: .current)
+    cache.setObject(image, forKey: key)
+    return image
+  }
+
+  private static func render(
+    monogram: String,
+    background: UIColor,
+    traits: UITraitCollection
+  ) -> UIImage? {
+    let circle = UIView(frame: CGRect(x: 0, y: 0, width: edge, height: edge))
+    circle.backgroundColor = background
+    circle.layer.cornerRadius = edge / 2
+    circle.overrideUserInterfaceStyle = traits.userInterfaceStyle
+
+    let attributes: [NSAttributedString.Key: Any] = [
+      // A fixed size rather than a scaled one: the container does not grow with Dynamic Type, so
+      // letters that did would simply overflow it.
+      .font: UIFont.systemFont(ofSize: edge * 0.4, weight: .medium),
+      .foregroundColor: UIColor.white,
+    ]
+    let text = monogram as NSString
+    let size = text.size(withAttributes: attributes)
+
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 0
+    format.opaque = false
+    let renderer = UIGraphicsImageRenderer(size: circle.bounds.size, format: format)
+
+    let image = renderer.image { context in
+      circle.layer.render(in: context.cgContext)
+      text.draw(
+        at: CGPoint(
+          x: ((edge - size.width) / 2).rounded(),
+          y: ((edge - size.height) / 2).rounded()
+        ),
+        withAttributes: attributes
+      )
+    }
+    return image.withRenderingMode(.alwaysOriginal)
+  }
+
   static func image(symbol: String, background: UIColor) -> UIImage? {
     let key = "\(symbol)|\(background)|\(edge)" as NSString
     if let cached = cache.object(forKey: key) { return cached }

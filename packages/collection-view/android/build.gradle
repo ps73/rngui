@@ -8,7 +8,49 @@
  * "plugin was loaded multiple times in different subprojects". The library is not buildable
  * standalone, and that is intentional: `npm run verify` covers the TypeScript and Swift
  * contracts, and the Kotlin is compiled by the example app.
+ *
+ * Which is also where its tests run. `npm run test:kotlin` is
+ * `apps/example/android/gradlew :rngui_collection-view:test` — the JVM tests below cannot be
+ * reached any other way, because there is no standalone build to reach them from. It needs
+ * `npm run prebuild` to have generated `apps/example/android` first, and `ANDROID_HOME` set.
+ * `npm run verify` deliberately does *not* call it: everything else in `verify` needs only Node
+ * and Xcode, and requiring an Android SDK and a prebuild to check a type contract would be a poor
+ * trade.
+ *
+ * The Compose compiler plugin is the **one** exception, and it is here under protest — and it is
+ * now declared only in a checkout that has tests to compile.
+ *
+ * Since Kotlin 2.0 the Compose compiler ships as a Gradle plugin rather than as a compiler
+ * artifact, and — measured, not assumed — `org.jetbrains.kotlin.plugin.compose` is *not* on the
+ * root classpath of an Expo app: applying it plainly fails with "Plugin with id ... not found",
+ * exactly as `org.jetbrains.kotlin.plugin.serialization` does. A library cannot ask consumers to
+ * edit their root `build.gradle`, so the classpath is declared here.
+ *
+ * The version is read off `rootProject.ext.kotlinVersion` rather than pinned, which is what keeps
+ * this from being the version-skew problem the paragraph above warns about: the Compose compiler
+ * plugin must match the Kotlin compiler exactly, and the app is the one that decides both. The
+ * literal is a floor for apps that publish no value, not a preference.
+ *
+ * **The whole of it is gated on `src/test` existing**, for the reason the `hasTestSources` note
+ * below gives at length. The only Compose in this repository is `RowBackendSpike.kt`, an M1
+ * measurement under `src/androidTest`; `src/main` contains no `@Composable` and no
+ * `androidx.compose` import. Applying the plugin unconditionally meant every consumer inherited
+ * both the Compose runtime in their APK and the exact Kotlin-version-skew surface this comment
+ * warns about — to compile a spike that is not in their copy of the library.
  */
+buildscript {
+  repositories {
+    google()
+    mavenCentral()
+  }
+  dependencies {
+    if (project.file("src/test").exists()) {
+      classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:" +
+        (rootProject.ext.has("kotlinVersion") ? rootProject.ext.get("kotlinVersion") : "2.1.20")
+    }
+  }
+}
+
 apply plugin: "com.android.library"
 apply plugin: "org.jetbrains.kotlin.android"
 
@@ -19,6 +61,30 @@ apply plugin: "org.jetbrains.kotlin.android"
  * that directory by hand; doing so would register it twice and AGP fails on the duplicate.
  */
 apply plugin: "com.facebook.react"
+
+/**
+ * Whether this checkout carries the tests, which a *published* one does not.
+ *
+ * `package.json` excludes `src/test` and `src/androidTest` from the tarball — a consumer compiling
+ * this library has no business compiling its contract tests, and shipping them would make their
+ * build depend on JUnit, androidx.test and Compose. So everything test-shaped below is guarded:
+ * in this repo it is all present and all wired, and in `node_modules` none of it exists and none
+ * of it is declared.
+ *
+ * Found by packing the tarball and unpacking it into a scratch consumer, which is the only way
+ * this class of defect shows up — the iOS dry-run found two, and so did this one.
+ */
+def hasTestSources = file("${projectDir}/src/test").exists()
+
+/**
+ * Compose exists here for one androidTest spike, so it is applied for one androidTest spike.
+ *
+ * See the `buildscript` note above for why the plugin has to be declared by this file at all, and
+ * why applying it to a consumer's build was worth removing.
+ */
+if (hasTestSources) {
+  apply plugin: "org.jetbrains.kotlin.plugin.compose"
+}
 
 /** Falls back to this library's own floor when the app does not publish a value. */
 def safeExtGet(prop, fallback) {
@@ -32,6 +98,9 @@ android {
 
   defaultConfig {
     minSdkVersion safeExtGet("minSdkVersion", 24)
+    // Harmless in a published copy, where there are no instrumented tests to run — but stated
+    // here rather than only in the repo so the two builds differ in as few places as possible.
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
   // Both halves are required and have to agree. AGP compiles Java at the app's target, while
@@ -42,8 +111,31 @@ android {
     targetCompatibility JavaVersion.VERSION_17
   }
 
+  if (hasTestSources) {
+    buildFeatures {
+      compose true
+    }
+  }
+
   lint {
     abortOnError false
+  }
+}
+
+/**
+ * The contract test between `src/tree.ts` and the generated Kotlin model.
+ *
+ * It reads the *same* fixture files the Swift test reads, straight out of `ios/Tests`, rather
+ * than a copy under `src/test/resources`. Two copies of a contract fixture is two contracts, and
+ * the whole claim of that test is that the two platforms accept the same tree.
+ *
+ * Passed as a system property rather than wired into the test source set, because adding
+ * `../ios/Tests` as a resource directory would also package `TreeTypesTests.swift` into the test
+ * runtime classpath — harmless, but the kind of surprise that costs somebody an afternoon.
+ */
+if (hasTestSources) {
+  tasks.withType(Test).configureEach {
+    systemProperty "rngui.fixtureDir", file("${projectDir}/../ios/Tests").absolutePath
   }
 }
 
@@ -63,4 +155,70 @@ dependencies {
   // former for the latter at the app's exact version, so an unversioned `+` here can never drift
   // from what the app resolves.
   implementation "com.facebook.react:react-native:+"
+
+  implementation "androidx.recyclerview:recyclerview:1.4.0"
+
+  // Material Components, and the reason this library stopped drawing Android in iOS's colours.
+  //
+  // It brings three things nothing else can: the M3 *colour tokens* (surface, surfaceContainer,
+  // onSurfaceVariant, secondaryContainer, outlineVariant), the selection controls that actually
+  // look like Android's (`MaterialSwitch` rather than the Holo-era `android.widget.Switch`), and
+  // `MaterialShapeDrawable` for the corner treatment the M3 list spec asks for.
+  //
+  // It carries a theme requirement with it — Material widgets throw unless inflated against a
+  // Material theme — which `AppearanceResolver.themedContext` supplies rather than pushing onto
+  // the consuming app. See there for why that wrapper is not optional.
+  implementation "com.google.android.material:material:1.12.0"
+  // WindowInsetsCompat and WindowInsetsAnimationCompat: the keyboard path in M10 needs the
+  // animation callback, which the platform only offers from API 30 and AndroidX back-ports.
+  implementation "androidx.core:core-ktx:1.15.0"
+
+  if (hasTestSources) {
+    // The BOM keeps the Compose artifacts consistent with each other. It does *not* pin them
+    // against the Compose compiler plugin above — that one tracks the app's Kotlin version, and
+    // the runtime/compiler compatibility check is the compiler's own.
+    //
+    // **`implementation`, and it has to be**, even though nothing in `src/main` composes. The
+    // compiler plugin applies to every Kotlin compilation in the project, not only the one whose
+    // sources use Compose, and it aborts with "The Compose Compiler requires the Compose Runtime
+    // to be on the class path" — an *internal compiler error*, not a resolution failure — when the
+    // main compilation has none. Measured, by removing it and watching `compileDebugKotlin` die.
+    //
+    // What makes that acceptable is the guard rather than the scope: in a published copy there is
+    // no `src/test`, so the plugin is never applied, `compose true` is never set, and this line
+    // never runs. A consumer's APK carries no Compose. In this repo all three are present, for the
+    // sake of `RowBackendSpike.kt` — the M1 measurement that is the only Compose here at all.
+    implementation platform("androidx.compose:compose-bom:2025.06.01")
+    implementation "androidx.compose.runtime:runtime"
+
+    testImplementation "junit:junit:4.13.2"
+    // The generated decoders use `org.json`, which is part of the platform on a device but is a
+    // signature-only stub in the `android.jar` unit tests compile against — every method throws
+    // "not mocked". This is the real implementation, on the test classpath only, so it never
+    // reaches the AAR and never duplicates the platform's copy at runtime.
+    testImplementation "org.json:json:20250517"
+
+    // The instrumented spikes and regression tests. Instrumented rather than local because what
+    // they measure — frame times, recycling, hosted-view ownership — does not exist on the JVM.
+    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation "androidx.test:rules:1.6.1"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    androidTestImplementation "androidx.activity:activity:1.9.3"
+
+    // The BOM keeps the Compose artifacts consistent with each other. It does *not* pin them
+    // against the Compose compiler plugin above — that one tracks the app's Kotlin version, and
+    // the runtime/compiler compatibility check is the compiler's own.
+    //
+    // All of it is androidTest-only, because `RowBackendSpike.kt` is the only thing here that
+    // composes. `runtime` used to be an `implementation` dependency on the theory that the
+    // compiler plugin refuses to run without one on the classpath ("The Compose Compiler requires
+    // the Compose Runtime to be on the class path") — true, but the plugin is no longer applied at
+    // all unless the spike is present, so the requirement moves to where the spike is. M1 measured
+    // the stock row kinds onto hand-built Views and M7 shipped the control-bearing kinds as
+    // platform widgets, so nothing in `src/main` has ever needed it.
+    androidTestImplementation platform("androidx.compose:compose-bom:2025.06.01")
+    androidTestImplementation "androidx.compose.runtime:runtime"
+    androidTestImplementation "androidx.compose.ui:ui"
+    androidTestImplementation "androidx.compose.material3:material3"
+  }
 }

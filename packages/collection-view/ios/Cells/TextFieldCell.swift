@@ -112,9 +112,22 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
    */
   private func applyText(_ next: String) {
     if field.isFirstResponder, let index = pendingEchoes.firstIndex(of: next) {
-      // Everything up to and including this value is now accounted for. Older entries can go: a
-      // commit can never arrive out of order, so they will never be echoed again.
-      pendingEchoes.removeFirst(index + 1)
+      // Everything *older* than this value is now accounted for and can go: a commit can never
+      // arrive out of order, so those will never be echoed again.
+      //
+      // **The matched value itself stays, and dropping it was a bug.** The same value can reach
+      // this method more than once — a `reconfigureItems` prompted by something else on the row, a
+      // snapshot reapplied — and an entry consumed on the first pass makes the second a miss. A
+      // miss writes. Found on Android, where a rebinding `RecyclerView` makes the repeat routine
+      // rather than occasional; instrumented there it read:
+      //
+      //     apply next='Rehear' have='Re'                → MISS, applied
+      //     …eleven keystrokes later…
+      //     apply next='Rehear' have='Rehearon-Thursday' → MISS, applied
+      //
+      // — the field thrown back eleven characters by a value it had itself sent. UIKit reaches it
+      // less often, which is what kept it hidden here, not something that makes it safe.
+      pendingEchoes.removeFirst(index)
       return
     }
     pendingEchoes.removeAll()

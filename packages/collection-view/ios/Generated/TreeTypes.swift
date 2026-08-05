@@ -2,7 +2,10 @@
 //
 // Run `npm run gen:swift-types` after changing the descriptor types. The output is committed
 // on purpose: `pod install` must not require Node, and a schema change should be visible in a
-// diff. CI fails if this file is stale.
+// diff.
+//
+// `npm run verify` regenerates and fails on any diff, so a stale copy cannot pass it. Nothing
+// runs that automatically — this repository has no CI — so it is a check somebody has to invoke.
 //
 // Every field decodes leniently. `JSONDecoder` fails an entire payload on one unknown enum
 // case or missing key, and `expo-updates` can ship a JS bundle newer than the native binary
@@ -22,6 +25,7 @@ enum RowKind: String, Decodable {
   case button
   case menu
   case datePicker
+  case slider
   case card
   case chip
   /// A value this binary does not recognise.
@@ -212,6 +216,19 @@ enum ListAppearance: String, Decodable {
   }
 }
 
+/// Generated from `AndroidListStyle` in tree.ts.
+enum AndroidListStyle: String, Decodable {
+  case standard
+  case segmented
+  /// A value this binary does not recognise.
+  case unknown
+
+  init(from decoder: any Decoder) throws {
+    let raw = try decoder.singleValueContainer().decode(String.self)
+    self = AndroidListStyle(rawValue: raw) ?? .unknown
+  }
+}
+
 /// One entry in a `menu` row's `UIMenu`.
 struct MenuItemSpec: Decodable, Equatable {
   var id: String = ""
@@ -291,16 +308,47 @@ struct RowSpec: Decodable, Equatable {
   /// A symbol name rather than an image source: these are glyphs from the system set, they scale
   /// with Dynamic Type for free, and they take the row's tint without an asset pipeline.
   var systemImage: String?
+  /// An explicit Material Symbol name, for Android.
+  ///
+  /// The one deliberate platform-specific field in this file, and the escape hatch for the fact
+  /// that `systemImage` cannot be mapped completely: SF Symbols and Material Symbols overlap in
+  /// meaning but never in naming, so native carries a curated map and an unmapped name renders
+  /// nothing. Setting this names the Android glyph directly, and wins over `systemImage` where both
+  /// are set — an escape hatch that loses to the thing it overrides is not one.
+  ///
+  /// Ignored on iOS. Additive, so it is safe under rule 2 above: a binary that predates it simply
+  /// does not read the key.
+  var materialSymbol: String?
   /// Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing.
   var imageColor: String?
-  /// Fills a rounded tile behind the glyph and draws the glyph white — Settings' coloured squares.
+  /// Fills the platform's icon container behind the glyph and draws the glyph white.
   ///
-  /// Set, this replaces `imageColor` rather than combining with it: the point of a tile is that the
-  /// colour is the *background*, and a Settings row has never had a tinted glyph on a tinted square.
-  /// Normalised to `#RRGGBBAA` before crossing.
+  /// **The container's shape is the platform's, not the caller's**: a 29pt rounded square on iOS,
+  /// which is Settings' coloured tile, and a 40dp circle on Android, which is M3's leading avatar.
+  /// Android has never had the tile — it is Apple's, and drawing it there would be the clearest
+  /// possible case of one platform wearing the other's clothes. A screen that wants Pixel Settings
+  /// leaves this unset and gets the bare monochrome glyph Pixel Settings actually draws.
+  ///
+  /// Set, this replaces `imageColor` rather than combining with it: the point of a container is that
+  /// the colour is the *background*, and neither platform tints the glyph on top of it. Normalised
+  /// to `#RRGGBBAA` before crossing.
   var imageBackground: String?
+  /// One or two letters drawn in the container instead of a glyph — a contact's initials.
+  ///
+  /// The monogram avatar every address book falls back to when a person has no photo, and the one
+  /// leading element a symbol set cannot express: it is *derived from the row's own data* rather
+  /// than chosen from a fixed vocabulary. Both platforms draw it, in the container shape described
+  /// on [imageBackground] above.
+  ///
+  /// Wins over `systemImage` and `materialSymbol` where both are set, and needs `imageBackground` to
+  /// have something to sit in — letters floating unbounded where an icon would be read as a layout
+  /// bug, so a monogram without a container draws nothing and warns.
+  ///
+  /// Truncated to two characters by native. Longer is not a monogram, and silently drawing five
+  /// letters squeezed into a 40dp circle would be worse than the truncation.
+  var imageMonogram: String?
   /// The glyph's point size, for a bare symbol. Ignored when `imageBackground` is set, where the
-  /// tile's own size decides.
+  /// container's own size decides.
   var imageSize: Double?
   /// The red count bubble — Settings' unread badge.
   ///
@@ -359,6 +407,31 @@ struct RowSpec: Decodable, Equatable {
   var datePickerStyle: DatePickerStyle?
   var minDateMillis: Double?
   var maxDateMillis: Double?
+  /// `slider` position, in the units [sliderMin]…[sliderMax] describe.
+  ///
+  /// **A controlled value, with one exception that native owns.** Like every other control here the
+  /// caller holds the state and native reports changes — but a slider reports them *per frame of a
+  /// drag*, so the commit carrying frame N routinely arrives while the thumb is at frame N+3. Native
+  /// therefore ignores incoming values for as long as a drag is in progress and takes them again on
+  /// release, which is the numeric form of the echo rule the text fields follow.
+  var sliderValue: Double?
+  /// Defaults to 0.
+  var sliderMin: Double?
+  /// Defaults to 1, so an unbounded slider is a fraction — which is what most of them are.
+  var sliderMax: Double?
+  /// Quantises the value. Unset or 0 is continuous.
+  ///
+  /// Both platforms round to it, but only Android *draws* it: M3 marks each stop on the track, and
+  /// iOS has never had tick marks on a `UISlider`. Documented rather than faked — drawing our own
+  /// ticks on iOS would produce a control no iOS user has seen.
+  var sliderStep: Double?
+  /// SF Symbols flanking the track — the small and large suns on a brightness slider.
+  ///
+  /// `UISlider` has slots for exactly these (`minimumValueImage`/`maximumValueImage`), and Android
+  /// has no equivalent property, so the Material slider is laid out between two icon views to the
+  /// same effect. Mapped through the Material Symbols table on Android like any other `systemImage`.
+  var sliderMinImage: String?
+  var sliderMaxImage: String?
   /// `button` emphasis.
   var role: ButtonRole?
   /// `menu` entries, and which of them is currently chosen.
@@ -369,7 +442,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, imageColor, imageBackground, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, sliderValue, sliderMin, sliderMax, sliderStep, sliderMinImage, sliderMaxImage, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -384,8 +457,10 @@ struct RowSpec: Decodable, Equatable {
     value = try container.decodeIfPresent(String.self, forKey: .value)
     accessory = try container.decodeIfPresent(AccessoryKind.self, forKey: .accessory)
     systemImage = try container.decodeIfPresent(String.self, forKey: .systemImage)
+    materialSymbol = try container.decodeIfPresent(String.self, forKey: .materialSymbol)
     imageColor = try container.decodeIfPresent(String.self, forKey: .imageColor)
     imageBackground = try container.decodeIfPresent(String.self, forKey: .imageBackground)
+    imageMonogram = try container.decodeIfPresent(String.self, forKey: .imageMonogram)
     imageSize = try container.decodeIfPresent(Double.self, forKey: .imageSize)
     badge = try container.decodeIfPresent(String.self, forKey: .badge)
     badgeColor = try container.decodeIfPresent(String.self, forKey: .badgeColor)
@@ -409,6 +484,12 @@ struct RowSpec: Decodable, Equatable {
     datePickerStyle = try container.decodeIfPresent(DatePickerStyle.self, forKey: .datePickerStyle)
     minDateMillis = try container.decodeIfPresent(Double.self, forKey: .minDateMillis)
     maxDateMillis = try container.decodeIfPresent(Double.self, forKey: .maxDateMillis)
+    sliderValue = try container.decodeIfPresent(Double.self, forKey: .sliderValue)
+    sliderMin = try container.decodeIfPresent(Double.self, forKey: .sliderMin)
+    sliderMax = try container.decodeIfPresent(Double.self, forKey: .sliderMax)
+    sliderStep = try container.decodeIfPresent(Double.self, forKey: .sliderStep)
+    sliderMinImage = try container.decodeIfPresent(String.self, forKey: .sliderMinImage)
+    sliderMaxImage = try container.decodeIfPresent(String.self, forKey: .sliderMaxImage)
     role = try container.decodeIfPresent(ButtonRole.self, forKey: .role)
     menuItems = try container.decodeIfPresent([MenuItemSpec].self, forKey: .menuItems)
     selectedItemId = try container.decodeIfPresent(String.self, forKey: .selectedItemId)
@@ -623,6 +704,11 @@ struct Appearance: Decodable, Equatable {
 struct Tree: Decodable, Equatable {
   var sections: [SectionSpec] = []
   var listAppearance: ListAppearance?
+  /// Android's Material 3 list style. Ignored on iOS, where the shape comes from `listAppearance`.
+  ///
+  /// Defaults to `segmented` for `insetGrouped` and `grouped`, and to `standard` for `plain` —
+  /// which is the mapping that makes an unchanged cross-platform screen look right on both.
+  var androidListStyle: AndroidListStyle?
   var appearance: Appearance?
   /// Applied when the interface style is dark. Falls back to `appearance` field by field, so
   /// setting only `appearance` gives you that look in both modes — the least surprising
@@ -630,7 +716,7 @@ struct Tree: Decodable, Equatable {
   var darkAppearance: Appearance?
 
   private enum CodingKeys: String, CodingKey {
-    case sections, listAppearance, appearance, darkAppearance
+    case sections, listAppearance, androidListStyle, appearance, darkAppearance
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -640,6 +726,7 @@ struct Tree: Decodable, Equatable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     sections = try container.decodeIfPresent([SectionSpec].self, forKey: .sections) ?? []
     listAppearance = try container.decodeIfPresent(ListAppearance.self, forKey: .listAppearance)
+    androidListStyle = try container.decodeIfPresent(AndroidListStyle.self, forKey: .androidListStyle)
     appearance = try container.decodeIfPresent(Appearance.self, forKey: .appearance)
     darkAppearance = try container.decodeIfPresent(Appearance.self, forKey: .darkAppearance)
   }

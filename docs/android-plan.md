@@ -11,6 +11,73 @@ on, and it settles them by measurement rather than by argument.
 
 ---
 
+## Status
+
+All twelve milestones are done and verified on a Pixel 10 emulator (API 37). What is still missing
+within them is listed honestly rather than rounded up.
+
+| Milestone                         | State                                                          |
+| --------------------------------- | -------------------------------------------------------------- |
+| M1 Foundations + decisions        | Done. Both settled by measurement; results below               |
+| M2 Generated Kotlin model         | Done. Shares its fixture with the Swift test                   |
+| M3 Scroll shell + first rows      | Done                                                           |
+| M4 Grouping, shape, separators    | Done. Ripple clipping verified by pixel measurement            |
+| M5 Sticky headers + scrubber      | Done                                                           |
+| M6 Typography + icons             | Done. Ink-coverage instrument passes                           |
+| M7 Controls                       | Done. Recycling emits zero spurious events, proven by mutation |
+| M8 Host rows                      | Done. Ownership guard proven by mutation                       |
+| M9 Chips + swipe actions          | Done                                                           |
+| M10 Insets, keyboard, scroll      | Done                                                           |
+| M11 Bottom sheet                  | Done. Scrolls, hands the drag back, zero direction reversals   |
+| M12 Example parity, docs, release | Done, except the four-device matrix                            |
+| Post-plan                         | M3 Expressive pass, 16 reported defects, Slider, Pixel screens |
+
+**M11 took two bugs in the same seam.** RNGH's `NativeViewGestureHandler` decides whether to
+activate with `view is ViewGroup && view.onInterceptTouchEvent(event)`, and the view it asks is this
+component's `FrameLayout` wrapper rather than the `RecyclerView` inside — a `FrameLayout` never
+intercepts, so the sheet kept the whole gesture. Once that was answered, RNGH drove the view with
+`view.onTouchEvent(event)`, which on a wrapper never reaches the child. Both are forwarded now, each
+guarded so ordinary dispatch is untouched.
+
+The plan guessed right for the wrong reason: it expected RNGH to compose because `RecyclerView`
+reports `canScrollVertically`, which is true and was irrelevant, because nothing was asking the
+`RecyclerView`. What made this fixable where iOS was not is that RNGH asks the _view_ rather than
+checking its class — on iOS the equivalent is one hard `isKindOfClass:` with no extension point.
+
+The jank-frame instrument the plan proposed as a replacement for the iOS reversal counter is not
+built: the counter itself reads clean here, so there is no judder to measure.
+
+**Not done in M12:** the device matrix (one API 24 device, one API 31, one current, one low-RAM).
+Only a single emulator was available, so "it works on a Pixel 10 emulator" is the whole of the
+claim. This is now the only thing on the plan that has not been done.
+
+The Settings and Contacts screens **were** the other one, and are no longer: Settings is a Pixel
+Settings rebuild — two-line rows with a summary under each, bare monochrome glyphs, no chevrons,
+toolbar search — and Contacts is Google Contacts, with monogram avatars over the same 2,000-row
+harness and no swipe-to-delete, because Material assigns that gesture to dismiss. Both platforms
+keep their own file, picked by `Platform.select` rather than by Metro's platform extensions, so
+`npm run typecheck` covers both rather than silently checking one.
+
+**`keyboardAware`'s focus-following half is done too**, and its verification is worth recording
+because it is not the usual kind. `InsetController` already turns the IME height into the list's
+bottom padding, and `RecyclerView` scrolls against `getHeight() - getPaddingBottom()` — so the
+whole of "scroll the field above the keyboard" is one `requestRectangleOnScreen` with the caret's
+rect, and none of this code ever learns how tall a keyboard is. The caret rather than the row,
+because a grown `textArea` centred by its row leaves the line being typed underneath the IME.
+
+It could not be exercised on the emulator: its Gboard renders floating and contributes no window
+inset, so there is nothing for the list to react to, and the setting that normally forces a docked
+IME did not take. `KeyboardFocusTest` simulates the keyboard as the bottom padding it becomes in
+production, which is what every line under test actually sees — proven by two mutants, one dropping
+the caret path and one refusing to scroll. What that leaves unverified is the two one-line hooks
+that call it.
+
+Three plan assumptions did not survive contact and are corrected in place below: Compose needs a
+compiler plugin the app does not provide, the Material Symbols font is 14 MB rather than something
+to bundle whole, and `RowBackendSpike` could not settle Decision 1 on available hardware.
+
+---
+
 ## Where we are
 
 `android/src/main/java/com/rngui/collectionview/` holds three files: a `ViewGroupManager` that
@@ -169,6 +236,85 @@ fails to resolve. If it resolves, kotlinx.serialization wins on every axis and M
 **Done when:** both spikes exist, `FrameMetrics` numbers for each are recorded in this document,
 the serialization question is answered by a real build failure or a real success, and the two
 decisions are written down with their numbers.
+
+### M1 results
+
+Measured 2026-07-31. The spike is
+[`RowBackendSpike.kt`](../packages/collection-view/android/src/androidTest/java/com/rngui/collectionview/spike/RowBackendSpike.kt);
+re-run it with `apps/example/android/gradlew :rngui_collection-view:connectedDebugAndroidTest`.
+
+**Decision 2 — serialization: settled, as predicted.** Adding
+`apply plugin: "org.jetbrains.kotlin.plugin.serialization"` to the library subproject of a
+prebuilt Expo app fails at configuration time:
+
+```
+> Plugin with id 'org.jetbrains.kotlin.plugin.serialization' not found.
+```
+
+Generated `org.json` decoders it is, and M2 ships them.
+
+**A finding the plan did not anticipate: Compose has the same problem.** Since Kotlin 2.0 the
+Compose compiler is a Gradle plugin too, and `org.jetbrains.kotlin.plugin.compose` fails
+identically. It is _recoverable_ where serialization was not — a `buildscript` block in the
+library's own `build.gradle`, with the version read off `rootProject.ext.kotlinVersion` so it
+tracks the app's Kotlin rather than pinning against it, resolves and compiles. But it means
+**any** use of Compose costs the library the one thing `android/build.gradle` was written to
+avoid, and the cost is paid at the first `@Composable` rather than at the hundredth.
+
+**Decision 1 — row backend: the emulator cannot settle it, and says so.**
+
+|         | create   | first bind | rebind    |
+| ------- | -------- | ---------- | --------- |
+| Views   | 0.292 ms | 0.054 ms   | 0.055 ms  |
+| Compose | 0.039 ms | 2.207 ms   | 0.021 ms† |
+
+† Not a real number. Writing a `mutableStateOf` schedules a recomposition that dispatches on the
+next frame, so a `measure()` on the same stack still sees the old composition. The spike says this
+rather than reporting it as a cost — an earlier version of it did report exactly that, and was
+confidently wrong by two orders of magnitude.
+
+Frame times, 2,000 rows, 400 frames of fixed `scrollBy`:
+
+|         | p50      | p90      | p99      | janky frames |
+| ------- | -------- | -------- | -------- | ------------ |
+| Views   | 17.50 ms | 18.34 ms | 18.88 ms | 290 / 400    |
+| Compose | 24.68 ms | 29.28 ms | 34.24 ms | 388 / 400    |
+
+**The Views baseline misses 60fps drawing two `TextView`s per row.** On a software-rendered
+emulator there is no 16 ms budget left in which to measure a 2 ms cost, and the frame comparison
+additionally penalises Compose's draw path in a way a real GPU would not. The one number that does
+transfer is first composition: **2.15 ms above Views**, which is over the plan's threshold — but it
+is paid once per _holder_, not once per row, so a pool of ~7 per view type pays it ~7 times. That
+is a hitch when a list first scrolls, not a per-row tax, and it is not by itself grounds for the
+fallback.
+
+**What M3 does with that.** It builds `default` / `value` / `subtitle` as hand-built Views — the
+plan's own documented fallback — for three reasons, only one of which is performance:
+
+1. The measurement is inconclusive on available hardware, and the plan's rule is that a verdict
+   needs a reproduction. Shipping the more expensive option on an unresolved measurement is the
+   wrong way round.
+2. Both branches of Decision 1 keep Compose for the control-bearing kinds (`switch`, `datePicker`,
+   `menu`, `chip`), so this defers nothing that M7 will not need anyway.
+3. The build-system coupling above is real, permanent and paid up front. Three row kinds that a
+   `LinearLayout` renders in 0.055 ms are not what should buy it.
+
+This is a decision to revisit, not a closed one. Re-run the spike on the M12 device matrix; if
+Compose holds frame budget on a mid-tier phone, moving the three stock kinds over is a contained
+change, because M3 puts every row kind behind one `RowViewHolder` seam.
+
+**`minSdk` stays at 24.** Raising it to 26 buys `Paint.setFontVariationSettings` and costs every
+consumer below it, against a React Native floor of 24. M6 falls back to the nearest static weight
+below 26, which is a visible-but-correct degradation rather than a broken one — and the ink-coverage
+instrument M6 specifies will say which path a device took.
+
+**Unit tests run**, through the example app's Gradle exactly as the plan proposed:
+
+```
+apps/example/android/gradlew -p apps/example/android :rngui_collection-view:testDebugUnitTest
+```
+
+**`.gitignore`** already covers `packages/*/android/build/`; nothing to do.
 
 ---
 

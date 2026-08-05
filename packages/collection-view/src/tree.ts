@@ -53,6 +53,14 @@ export type RowKind =
   /** A `UIDatePicker`, compact or inline. */
   | 'datePicker'
   /**
+   * A `UISlider` on iOS, a Material 3 `Slider` on Android.
+   *
+   * The one control where the two platforms' *shapes* have diverged rather than just their
+   * colours: iOS draws a thin track with a round knob, and M3 Expressive draws a thick track that
+   * the handle cuts a gap into. Both are the local control, drawn by the local framework.
+   */
+  | 'slider'
+  /**
    * A rich stacked cell — a title, a prominent value and a caption.
    *
    * The recyclable counterpart to a `Host` row: everything a summary card usually needs, described
@@ -164,19 +172,54 @@ export interface RowSpec {
    * with Dynamic Type for free, and they take the row's tint without an asset pipeline.
    */
   systemImage?: string
+  /**
+   * An explicit Material Symbol name, for Android.
+   *
+   * The one deliberate platform-specific field in this file, and the escape hatch for the fact
+   * that `systemImage` cannot be mapped completely: SF Symbols and Material Symbols overlap in
+   * meaning but never in naming, so native carries a curated map and an unmapped name renders
+   * nothing. Setting this names the Android glyph directly, and wins over `systemImage` where both
+   * are set — an escape hatch that loses to the thing it overrides is not one.
+   *
+   * Ignored on iOS. Additive, so it is safe under rule 2 above: a binary that predates it simply
+   * does not read the key.
+   */
+  materialSymbol?: string
   /** Overrides the glyph's colour. Normalised to `#RRGGBBAA` before crossing. */
   imageColor?: string
   /**
-   * Fills a rounded tile behind the glyph and draws the glyph white — Settings' coloured squares.
+   * Fills the platform's icon container behind the glyph and draws the glyph white.
    *
-   * Set, this replaces `imageColor` rather than combining with it: the point of a tile is that the
-   * colour is the *background*, and a Settings row has never had a tinted glyph on a tinted square.
-   * Normalised to `#RRGGBBAA` before crossing.
+   * **The container's shape is the platform's, not the caller's**: a 29pt rounded square on iOS,
+   * which is Settings' coloured tile, and a 40dp circle on Android, which is M3's leading avatar.
+   * Android has never had the tile — it is Apple's, and drawing it there would be the clearest
+   * possible case of one platform wearing the other's clothes. A screen that wants Pixel Settings
+   * leaves this unset and gets the bare monochrome glyph Pixel Settings actually draws.
+   *
+   * Set, this replaces `imageColor` rather than combining with it: the point of a container is that
+   * the colour is the *background*, and neither platform tints the glyph on top of it. Normalised
+   * to `#RRGGBBAA` before crossing.
    */
   imageBackground?: string
   /**
+   * One or two letters drawn in the container instead of a glyph — a contact's initials.
+   *
+   * The monogram avatar every address book falls back to when a person has no photo, and the one
+   * leading element a symbol set cannot express: it is *derived from the row's own data* rather
+   * than chosen from a fixed vocabulary. Both platforms draw it, in the container shape described
+   * on [imageBackground] above.
+   *
+   * Wins over `systemImage` and `materialSymbol` where both are set, and needs `imageBackground` to
+   * have something to sit in — letters floating unbounded where an icon would be read as a layout
+   * bug, so a monogram without a container draws nothing and warns.
+   *
+   * Truncated to two characters by native. Longer is not a monogram, and silently drawing five
+   * letters squeezed into a 40dp circle would be worse than the truncation.
+   */
+  imageMonogram?: string
+  /**
    * The glyph's point size, for a bare symbol. Ignored when `imageBackground` is set, where the
-   * tile's own size decides.
+   * container's own size decides.
    */
   imageSize?: number
   /**
@@ -264,6 +307,38 @@ export interface RowSpec {
   datePickerStyle?: DatePickerStyle
   minDateMillis?: number
   maxDateMillis?: number
+
+  /**
+   * `slider` position, in the units [sliderMin]…[sliderMax] describe.
+   *
+   * **A controlled value, with one exception that native owns.** Like every other control here the
+   * caller holds the state and native reports changes — but a slider reports them *per frame of a
+   * drag*, so the commit carrying frame N routinely arrives while the thumb is at frame N+3. Native
+   * therefore ignores incoming values for as long as a drag is in progress and takes them again on
+   * release, which is the numeric form of the echo rule the text fields follow.
+   */
+  sliderValue?: number
+  /** Defaults to 0. */
+  sliderMin?: number
+  /** Defaults to 1, so an unbounded slider is a fraction — which is what most of them are. */
+  sliderMax?: number
+  /**
+   * Quantises the value. Unset or 0 is continuous.
+   *
+   * Both platforms round to it, but only Android *draws* it: M3 marks each stop on the track, and
+   * iOS has never had tick marks on a `UISlider`. Documented rather than faked — drawing our own
+   * ticks on iOS would produce a control no iOS user has seen.
+   */
+  sliderStep?: number
+  /**
+   * SF Symbols flanking the track — the small and large suns on a brightness slider.
+   *
+   * `UISlider` has slots for exactly these (`minimumValueImage`/`maximumValueImage`), and Android
+   * has no equivalent property, so the Material slider is laid out between two icon views to the
+   * same effect. Mapped through the Material Symbols table on Android like any other `systemImage`.
+   */
+  sliderMinImage?: string
+  sliderMaxImage?: string
 
   /** `button` emphasis. */
   role?: ButtonRole
@@ -408,6 +483,23 @@ export interface GradientSpec {
 export type ListAppearance = 'insetGrouped' | 'grouped' | 'plain'
 
 /**
+ * How Material 3 arranges list items on Android. Ignored on iOS.
+ *
+ * The [M3 list spec](https://m3.material.io/components/lists/specs) defines exactly two, and they
+ * are a *visual* choice that does not change a list's behaviour:
+ *
+ * - `standard` — items sit flush against one another on the list surface, separated by dividers
+ *   where a divider is wanted. The default, and what most Android lists are.
+ * - `segmented` — each item is its own rounded container with space between, and a selected item
+ *   takes a larger corner radius and the `secondaryContainer` colour.
+ *
+ * A second field rather than more members on `ListAppearance`, because the two describe different
+ * things: `listAppearance` says how sections are *grouped* and is shared, this says how Android
+ * *draws* the items inside them. Additive, so it is safe under rule 2 above.
+ */
+export type AndroidListStyle = 'standard' | 'segmented'
+
+/**
  * Colour, spacing and typography overrides.
  *
  * Everything is optional and falls back to the platform's own value, so setting one field
@@ -456,6 +548,13 @@ export interface Appearance {
 export interface Tree {
   sections: SectionSpec[]
   listAppearance?: ListAppearance
+  /**
+   * Android's Material 3 list style. Ignored on iOS, where the shape comes from `listAppearance`.
+   *
+   * Defaults to `segmented` for `insetGrouped` and `grouped`, and to `standard` for `plain` —
+   * which is the mapping that makes an unchanged cross-platform screen look right on both.
+   */
+  androidListStyle?: AndroidListStyle
   appearance?: Appearance
   /**
    * Applied when the interface style is dark. Falls back to `appearance` field by field, so

@@ -18,6 +18,7 @@ import {
   Spinner,
   SwipeAction,
   SwipeActions,
+  Slider,
   Switch,
   TextArea,
   TextField,
@@ -46,6 +47,7 @@ export type {
   MenuProps,
   RowProps,
   SectionProps,
+  SliderProps,
   SwipeActionProps,
   SwipeActionsProps,
   TextAreaProps,
@@ -65,6 +67,7 @@ export type {
   SectionLayout,
   HeaderBackgroundStyle,
   KeyboardType,
+  AndroidListStyle,
   ListAppearance,
   MenuItemSpec,
   ReturnKeyType,
@@ -123,6 +126,7 @@ export const CollectionView = {
 
   // Controls
   Card,
+  Slider,
   Switch,
   TextField,
   TextArea,

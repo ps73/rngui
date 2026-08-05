@@ -53,18 +53,27 @@
     "ios",
     "android/src",
     "android/build.gradle",
+    "assets/material-symbols.codepoints",
     "*.podspec",
     "react-native.config.js",
     "!**/__tests__",
     "!ios/Tests",
+    "!android/src/androidTest",
+    "!android/src/test",
     "!**/.*"
   ],
   "scripts": {
+    "prepare": "bob build",
     "typecheck": "tsc --noEmit",
     "build": "bob build",
     "gen:swift-types": "node scripts/gen-swift-types.mjs",
+    "gen:kotlin-types": "node scripts/gen-kotlin-types.mjs",
     "test": "swift test",
-    "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests"
+    "test:kotlin": "cd ../../apps/example/android && ./gradlew :rngui_collection-view:test",
+    "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests",
+    "verify:kotlin-types": "node scripts/gen-kotlin-types.mjs && git diff --exit-code -- android/src/main/java/com/rngui/collectionview/generated android/src/test",
+    "gen:material-symbols": "node scripts/gen-material-symbols.mjs",
+    "verify:material-symbols": "node scripts/gen-material-symbols.mjs && git diff --exit-code -- android/src/main/java/com/rngui/collectionview/generated/MaterialSymbols.kt"
   },
   "codegenConfig": {
     "name": "RNGUICollectionView",

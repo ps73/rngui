@@ -20,8 +20,10 @@
           "value": "Tree.sections[0].rows[0].value",
           "accessory": "spinner",
           "systemImage": "Tree.sections[0].rows[0].systemImage",
+          "materialSymbol": "Tree.sections[0].rows[0].materialSymbol",
           "imageColor": "Tree.sections[0].rows[0].imageColor",
           "imageBackground": "Tree.sections[0].rows[0].imageBackground",
+          "imageMonogram": "Tree.sections[0].rows[0].imageMonogram",
           "imageSize": 11,
           "badge": "Tree.sections[0].rows[0].badge",
           "badgeColor": "Tree.sections[0].rows[0].badgeColor",
@@ -52,6 +54,12 @@
           "datePickerStyle": "wheels",
           "minDateMillis": 77,
           "maxDateMillis": 88,
+          "sliderValue": 99,
+          "sliderMin": 110,
+          "sliderMax": 121,
+          "sliderStep": 132,
+          "sliderMinImage": "Tree.sections[0].rows[0].sliderMinImage",
+          "sliderMaxImage": "Tree.sections[0].rows[0].sliderMaxImage",
           "role": "plain",
           "menuItems": [
             {
@@ -86,6 +94,7 @@
     }
   ],
   "listAppearance": "plain",
+  "androidListStyle": "segmented",
   "appearance": {
     "background": "Tree.appearance.background",
     "backgroundGradient": {
@@ -93,9 +102,9 @@
         "Tree.appearance.backgroundGradient.colors[0]"
       ],
       "locations": [
-        99
+        143
       ],
-      "angle": 110
+      "angle": 154
     },
     "rowBackground": "Tree.appearance.rowBackground",
     "separator": "Tree.appearance.separator",
@@ -105,11 +114,11 @@
     "headerBackgroundStyle": "transparent",
     "footerTextColor": "Tree.appearance.footerTextColor",
     "tintColor": "Tree.appearance.tintColor",
-    "sectionSpacing": 121,
+    "sectionSpacing": 165,
     "font": {
       "family": "Tree.appearance.font.family",
       "design": "monospaced",
-      "size": 132,
+      "size": 176,
       "weight": "Tree.appearance.font.weight",
       "variations": "Tree.appearance.font.variations",
       "scaled": true
@@ -117,7 +126,7 @@
     "headerFont": {
       "family": "Tree.appearance.headerFont.family",
       "design": "monospaced",
-      "size": 143,
+      "size": 187,
       "weight": "Tree.appearance.headerFont.weight",
       "variations": "Tree.appearance.headerFont.variations",
       "scaled": true
@@ -125,7 +134,7 @@
     "footerFont": {
       "family": "Tree.appearance.footerFont.family",
       "design": "monospaced",
-      "size": 154,
+      "size": 198,
       "weight": "Tree.appearance.footerFont.weight",
       "variations": "Tree.appearance.footerFont.variations",
       "scaled": true
@@ -138,9 +147,9 @@
         "Tree.darkAppearance.backgroundGradient.colors[0]"
       ],
       "locations": [
-        165
+        209
       ],
-      "angle": 176
+      "angle": 220
     },
     "rowBackground": "Tree.darkAppearance.rowBackground",
     "separator": "Tree.darkAppearance.separator",
@@ -150,11 +159,11 @@
     "headerBackgroundStyle": "transparent",
     "footerTextColor": "Tree.darkAppearance.footerTextColor",
     "tintColor": "Tree.darkAppearance.tintColor",
-    "sectionSpacing": 187,
+    "sectionSpacing": 231,
     "font": {
       "family": "Tree.darkAppearance.font.family",
       "design": "monospaced",
-      "size": 198,
+      "size": 242,
       "weight": "Tree.darkAppearance.font.weight",
       "variations": "Tree.darkAppearance.font.variations",
       "scaled": true
@@ -162,7 +171,7 @@
     "headerFont": {
       "family": "Tree.darkAppearance.headerFont.family",
       "design": "monospaced",
-      "size": 209,
+      "size": 253,
       "weight": "Tree.darkAppearance.headerFont.weight",
       "variations": "Tree.darkAppearance.headerFont.variations",
       "scaled": true
@@ -170,7 +179,7 @@
     "footerFont": {
       "family": "Tree.darkAppearance.footerFont.family",
       "design": "monospaced",
-      "size": 220,
+      "size": 264,
       "weight": "Tree.darkAppearance.footerFont.weight",
       "variations": "Tree.darkAppearance.footerFont.variations",
       "scaled": true

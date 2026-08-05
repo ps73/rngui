@@ -1,0 +1,38 @@
+{
+  "sections": [
+    {
+      "id": "known-section",
+      "header": "Still here",
+      "futureSectionField": {
+        "nested": true
+      },
+      "rows": [
+        {
+          "id": "row-known",
+          "kind": "value",
+          "label": "Label",
+          "value": "Value"
+        },
+        {
+          "id": "row-future",
+          "kind": "quantumSlider",
+          "label": "From a newer bundle",
+          "quantumRange": [
+            0,
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "listAppearance": "holographic",
+  "appearance": {
+    "labelColor": "#112233FF",
+    "futureAppearanceField": "ignored",
+    "font": {
+      "weight": "620",
+      "futureAxis": "grad"
+    }
+  },
+  "futureTopLevelField": 42
+}

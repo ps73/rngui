@@ -56,6 +56,9 @@ public final class RNGUICollectionViewHost: NSObject {
   @objc public var onTextChange: ((String, String) -> Void)?
   @objc public var onFocusChange: ((String, Bool) -> Void)?
   @objc public var onDateChange: ((String, Double) -> Void)?
+  /// Continuous, one per drag frame. See `onSliderCommit` for the once-per-gesture counterpart.
+  @objc public var onSliderChange: ((String, Double) -> Void)?
+  @objc public var onSliderCommit: ((String, Double) -> Void)?
   @objc public var onMenuSelect: ((String, String) -> Void)?
   @objc public var onSwipeAction: ((String, String) -> Void)?
   /// Carries a *section* id, unlike every other block here. A header button belongs to no row.
@@ -156,6 +159,7 @@ public final class RNGUICollectionViewHost: NSObject {
     UICollectionView.CellRegistration<UICollectionViewListCell, RowSpec>!
   private var hostRegistration: UICollectionView.CellRegistration<HostCell, RowSpec>!
   private var switchRegistration: UICollectionView.CellRegistration<SwitchCell, RowSpec>!
+  private var sliderRegistration: UICollectionView.CellRegistration<SliderCell, RowSpec>!
   private var textFieldRegistration:
     UICollectionView.CellRegistration<TextFieldCell, RowSpec>!
   private var textAreaRegistration: UICollectionView.CellRegistration<TextAreaCell, RowSpec>!
@@ -200,7 +204,24 @@ public final class RNGUICollectionViewHost: NSObject {
     // `contentInsetAdjustmentBehavior`, whose default is `automatic` rather than `ScrollView`'s
     // `never` — see the note on the prop.
     collectionView.contentInsetAdjustmentBehavior = .automatic
-    collectionView.keyboardDismissMode = .interactive
+    // **`.onDrag`, not `.interactive`, and the difference is the whole of the reported bug.**
+    // `.interactive` dismisses only when you drag *the keyboard itself* downward; scrolling the
+    // list does nothing. So a field stayed focused through every scroll and every tap on another
+    // row, and the only gesture that closed it was the one almost nobody tries. `.onDrag` is also
+    // what the Android side has always defaulted to, so the two platforms now agree — a caller can
+    // still ask for `interactive` explicitly.
+    collectionView.keyboardDismissMode = .onDrag
+
+    // **A tap recogniser rather than the selection callback, and the difference is the point.**
+    // `didSelectItemAt` fires only for *selectable* rows, so hanging dismissal off it would leave a
+    // tap on a switch row, a disabled row or the gap between cards doing nothing — and a keyboard
+    // that ignores half the screen is a worse bug than the one being fixed.
+    //
+    // `cancelsTouchesInView = false` is what keeps it invisible: the tap still reaches whatever it
+    // was going to reach, so row presses, switches and swipes behave exactly as before.
+    let dismissTap = UITapGestureRecognizer(target: self, action: #selector(handleDismissTap(_:)))
+    dismissTap.cancelsTouchesInView = false
+    collectionView.addGestureRecognizer(dismissTap)
 
     keyboardObserver = KeyboardObserver(scrollView: collectionView)
     keyboardObserver.onChange = { [weak self] overlap, duration, options in
@@ -273,6 +294,7 @@ public final class RNGUICollectionViewHost: NSObject {
     listRegistration = makeListRegistration()
     hostRegistration = makeHostRegistration()
     switchRegistration = makeSwitchRegistration()
+    sliderRegistration = makeSliderRegistration()
     textFieldRegistration = makeTextFieldRegistration()
     textAreaRegistration = makeTextAreaRegistration()
     menuRegistration = makeMenuRegistration()
@@ -451,16 +473,22 @@ public final class RNGUICollectionViewHost: NSObject {
       // Sticky alphabet headers — the Contacts behaviour, and the reason the `plain` appearance
       // exists here at all.
       //
-      // `pinToVisibleBounds` has to be set on the boundary item, and `NSCollectionLayoutSection`
-      // has no option for it: `.list(using:)` creates the header item internally from
-      // `headerMode`. What makes this work is that the items are reference types and the array is
-      // exposed, so the one already built can be reached and mutated rather than replaced —
-      // hand-rolling a replacement would mean guessing the header's height and insets, which is
-      // exactly what the list configuration knows and we do not.
+      // **Gated on iOS 26, and that gate is the price of swipe actions.** `pinToVisibleBounds` on a
+      // `.list(using:)` section does two things on iOS 18: it fails to pin, *and* it takes that
+      // section's swipe actions with it. Both symptoms, one cause — proven by the fact that swipe
+      // works on 18 in a grouped list, which never reaches this block, and fails in a plain one,
+      // which does. Setting it and hoping was costing a working feature to buy a broken one.
       //
-      // Only in the `plain` appearance. A pinned header on a grouped list would slide over the
-      // rounded cards, which is not a look iOS has anywhere.
-      if self.listAppearance == .plain {
+      // So below 26 the headers scroll with their rows. That is a visible loss and the honest
+      // trade: an alphabet header that does not stick is a cosmetic difference, and a swipe action
+      // that never opens is a function the caller asked for and did not get.
+      //
+      // Ruled out along the way, so nobody re-tries them: appending a pinned item when the loop
+      // finds none (no effect — the loop does find the configuration's item), replacing it with a
+      // hand-built one (worse — the header stops rendering, so the supplementary provider is bound
+      // to the configuration's item rather than to its `elementKind`), writing the array back
+      // (irrelevant), and `zIndex` alone (irrelevant).
+      if self.listAppearance == .plain, #available(iOS 26.0, *) {
         let items = layoutSection.boundarySupplementaryItems
         for item in items
         where item.elementKind == UICollectionView.elementKindSectionHeader {
@@ -468,10 +496,6 @@ public final class RNGUICollectionViewHost: NSObject {
           // Above the cells, or the rows scroll over the pinned header instead of under it.
           item.zIndex = 2
         }
-        // Reassigned rather than relying on mutating through the getter's references. The items
-        // are objects, so mutation in place ought to be enough, but whether the section holds
-        // those instances or copies of them is not documented — and a silently unpinned header
-        // is indistinguishable from having never written this at all.
         layoutSection.boundarySupplementaryItems = items
       }
 
@@ -724,6 +748,24 @@ public final class RNGUICollectionViewHost: NSObject {
    * specified — and this function is one refactor away from being handed a reused configuration.
    */
   private func applyImage(_ row: RowSpec, to content: inout UIListContentConfiguration) {
+    // A monogram avatar: initials rather than a glyph, in the same container. Checked before the
+    // symbol because it wins over one, and it needs a container for the same reason Android says
+    // so — two letters floating where an icon belongs read as a label that lost its row.
+    if let letters = monogramLetters(row) {
+      guard let hex = row.imageBackground, let background = UIColor(rnguiHex: hex) else {
+        Self.warnOnce(
+          "monogram-without-background",
+          "[@rngui/collection-view] a monogram needs `background` to sit in — letters with "
+            + "nothing behind them are not an avatar. That row's icon renders nothing."
+        )
+        content.image = nil
+        return
+      }
+      content.image = IconTile.image(monogram: letters, background: background)
+      applyTileMetrics(to: &content)
+      return
+    }
+
     guard let name = row.systemImage else {
       content.image = nil
       return
@@ -735,18 +777,7 @@ public final class RNGUICollectionViewHost: NSObject {
     if let hex = row.imageBackground, let background = UIColor(rnguiHex: hex) {
       let tile = IconTile.image(symbol: name, background: background)
       content.image = tile
-      // Reserved so that rows *without* a tile still align their text with the ones that have it.
-      // A Settings section where one row's label starts 29pt further left than its neighbours is
-      // the giveaway that this was assembled rather than laid out.
-      content.imageProperties.reservedLayoutSize = CGSize(
-        width: IconTile.edge,
-        height: IconTile.edge
-      )
-      content.imageProperties.maximumSize = CGSize(
-        width: IconTile.edge,
-        height: IconTile.edge
-      )
-      content.imageProperties.tintColor = nil
+      applyTileMetrics(to: &content)
       return
     }
 
@@ -779,6 +810,50 @@ public final class RNGUICollectionViewHost: NSObject {
     // handed down from a `color` prop cannot (that value crosses as one static colour).
     content.imageProperties.tintColor =
       row.imageColor.flatMap { UIColor(rnguiHex: $0) } ?? .secondaryLabel
+  }
+
+  /**
+   * The size a filled container claims, whether it holds a glyph or initials.
+   *
+   * Reserved so that rows *without* one still align their text with the rows that have it. A
+   * Settings section where one row's label starts 29pt further left than its neighbours is the
+   * giveaway that the screen was assembled rather than laid out.
+   */
+  private func applyTileMetrics(to content: inout UIListContentConfiguration) {
+    let size = CGSize(width: IconTile.edge, height: IconTile.edge)
+    content.imageProperties.reservedLayoutSize = size
+    content.imageProperties.maximumSize = size
+    content.imageProperties.tintColor = nil
+  }
+
+  /**
+   * The initials to draw, trimmed and cut to two.
+   *
+   * `prefix` over `String`, so the two are two *grapheme clusters* — an initial with a combining
+   * accent stays one letter rather than being split into a base and a floating diacritic.
+   */
+  private func monogramLetters(_ row: RowSpec) -> String? {
+    guard
+      let raw = row.imageMonogram?.trimmingCharacters(in: .whitespacesAndNewlines),
+      !raw.isEmpty
+    else { return nil }
+    return String(raw.prefix(2))
+  }
+
+  /**
+   * Once per message per process, and debug-only.
+   *
+   * `applyImage` runs on every cell configure, so printing unconditionally would be one line per
+   * row per scroll — thousands of them, for the single condition it exists to make visible.
+   * Android's `warnOnce` is the same guard for the same reason.
+   */
+  private static var warned: Set<String> = []
+
+  private static func warnOnce(_ key: String, _ message: String) {
+    #if DEBUG
+    guard warned.insert(key).inserted else { return }
+    print(message)
+    #endif
   }
 
   /// Tints `secondaryLabel` when the row asked for it — the "Today" / "15:00" under a Date row.
@@ -833,6 +908,47 @@ public final class RNGUICollectionViewHost: NSObject {
       let rowId = row.id
       cell.onChange = { [weak self] value in
         self?.onSwitchChange?(rowId, value)
+      }
+    }
+  }
+
+  /**
+   * The `UISlider` row.
+   *
+   * No `contentConfiguration` at all, unlike every other registration here: the control fills the
+   * row, so there is no label for the content configuration to lay out and assigning an empty one
+   * would reserve its margins for nothing.
+   */
+  private func makeSliderRegistration()
+    -> UICollectionView.CellRegistration<SliderCell, RowSpec>
+  {
+    UICollectionView.CellRegistration { [weak self] cell, _, row in
+      guard let self else { return }
+      self.applyBackground(to: cell, row: row)
+
+      cell.configure(
+        value: Float(row.sliderValue ?? row.sliderMin ?? 0),
+        minimum: Float(row.sliderMin ?? 0),
+        // Guarded rather than trusted: an inverted range makes `UISlider` unusable rather than
+        // throwing, which is harder to diagnose than a crash, and a caller building the bound from
+        // data can produce one by accident.
+        maximum: Float(max(row.sliderMax ?? 1, (row.sliderMin ?? 0) + .ulpOfOne)),
+        step: Float(row.sliderStep ?? 0),
+        minimumImage: row.sliderMinImage.flatMap { UIImage(systemName: $0) },
+        maximumImage: row.sliderMaxImage.flatMap { UIImage(systemName: $0) },
+        tint: self.rowTint(row),
+        enabled: row.disabled != true
+      )
+
+      // Reassigned every pass, capturing this row's id — a reused cell arrives holding the previous
+      // row's closures, and a slider reporting against the wrong row moves a control the user is
+      // not touching.
+      let rowId = row.id
+      cell.onChange = { [weak self] value in
+        self?.onSliderChange?(rowId, Double(value))
+      }
+      cell.onCommit = { [weak self] value in
+        self?.onSliderCommit?(rowId, Double(value))
       }
     }
   }
@@ -1277,6 +1393,10 @@ public final class RNGUICollectionViewHost: NSObject {
         return collectionView.dequeueConfiguredReusableCell(
           using: self.hostRegistration, for: indexPath, item: row
         )
+      case .slider:
+        return collectionView.dequeueConfiguredReusableCell(
+          using: self.sliderRegistration, for: indexPath, item: row
+        )
       case .switch:
         return collectionView.dequeueConfiguredReusableCell(
           using: self.switchRegistration, for: indexPath, item: row
@@ -1485,6 +1605,50 @@ public final class RNGUICollectionViewHost: NSObject {
 
   @objc public func setKeyboardAwareOffset(_ offset: CGFloat) {
     keyboardAwareOffset = offset
+  }
+
+  /**
+   * `ScrollView`'s prop of the same name, in the order codegen assigns its cases.
+   *
+   * An `Int` across the boundary because that is what a codegen string enum becomes; the mapping
+   * lives here rather than in the `.mm` so there is one table rather than two that must agree.
+   */
+  enum PersistTaps: Int {
+    case never = 0
+    case always = 1
+    case handled = 2
+  }
+
+  private var persistTaps: PersistTaps = .never
+
+  /**
+   * Resigns the first responder on a tap, according to `keyboardShouldPersistTaps`.
+   *
+   * `handled` asks whether the row under the finger would have *done* anything: a row with an
+   * `onPress` handled the tap, so the keyboard stays; a decorative row, a switch row with no press,
+   * or the background did not, so it goes. That is as close to `ScrollView`'s meaning as a list can
+   * get, where "the child" and "the row" are the same object.
+   */
+  @objc private func handleDismissTap(_ recognizer: UITapGestureRecognizer) {
+    guard collectionView.rnguiFindFirstResponder() != nil else { return }
+
+    switch persistTaps {
+    case .always:
+      return
+    case .never:
+      collectionView.endEditing(true)
+    case .handled:
+      let point = recognizer.location(in: collectionView)
+      let handled =
+        collectionView.indexPathForItem(at: point)
+        .flatMap { dataSource.itemIdentifier(for: $0) }
+        .flatMap { rowsById[$0]?.selectable } == true
+      if !handled { collectionView.endEditing(true) }
+    }
+  }
+
+  @objc public func setKeyboardShouldPersistTaps(_ raw: Int) {
+    persistTaps = PersistTaps(rawValue: raw) ?? .never
   }
 
   @objc public func setKeyboardDismissMode(_ raw: Int) {
@@ -2034,6 +2198,7 @@ extension RNGUICollectionViewHost: UICollectionViewDelegate {
   ) {
     collectionView.deselectItem(at: indexPath, animated: true)
     guard let rowId = dataSource.itemIdentifier(for: indexPath) else { return }
+
     onRowPress?(rowId)
   }
 

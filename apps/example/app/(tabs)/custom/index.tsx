@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
+import { Platform, Pressable, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import {
   CollectionView,
@@ -16,6 +16,9 @@ const DESIGNS: readonly FontDesign[] = [
   'serif',
   'monospaced',
 ]
+/** The two arrangements https://m3.material.io/components/lists/specs defines. */
+const ANDROID_LIST_STYLES = ['standard', 'segmented'] as const
+
 const VARIANTS = ['grouped', 'inverted'] as const
 const FACES = ['system', 'Inter'] as const
 
@@ -43,10 +46,14 @@ export default function CustomScreen() {
   const [colorScheme, setColorScheme] = useState<ColorScheme>('system')
   const [design, setDesign] = useState<FontDesign>('rounded')
   const [variant, setVariant] = useState<(typeof VARIANTS)[number]>('grouped')
+  const [listStyle, setListStyle] =
+    useState<(typeof ANDROID_LIST_STYLES)[number]>('segmented')
   const [expanded, setExpanded] = useState(false)
   const [face, setFace] = useState<(typeof FACES)[number]>('system')
   const [weightAxis, setWeightAxis] =
     useState<(typeof WEIGHT_AXIS)[number]>(400)
+  const [brightness, setBrightness] = useState(0.4)
+  const [volume, setVolume] = useState(7)
 
   /**
    * One spec, shared by rows, headers and footers.
@@ -65,6 +72,7 @@ export default function CustomScreen() {
   return (
     <CollectionView.Root
       colorScheme={colorScheme}
+      androidListStyle={listStyle}
       inverted={variant === 'inverted'}
       appearance={{
         tintColor: '#AF52DE',
@@ -137,6 +145,59 @@ export default function CustomScreen() {
         <CollectionView.Host id="variant" height={64}>
           <Chips options={VARIANTS} value={variant} onChange={setVariant} />
         </CollectionView.Host>
+      </CollectionView.Section>
+
+      {Platform.OS === 'android' && (
+        <CollectionView.Section
+          header="Material list style"
+          footer="The two arrangements the M3 list spec defines. `standard` sits items flush with dividers between them; `segmented` gives each its own rounded container, and a selected item a larger radius and the secondaryContainer colour. Visual only — neither changes how the list behaves. Unset follows `listAppearance`."
+        >
+          <CollectionView.Host id="android-list-style" height={64}>
+            <Chips
+              options={ANDROID_LIST_STYLES}
+              value={listStyle}
+              onChange={setListStyle}
+            />
+          </CollectionView.Host>
+        </CollectionView.Section>
+      )}
+
+      <CollectionView.Section
+        header="Sliders"
+        footer="A UISlider on iOS and a Material 3 Slider on Android — the one control whose shape the two platforms have genuinely diverged on, not just its colours. Brightness reports continuously so the value above it tracks the thumb; Volume reports only on release, which is what most callers should do. The step is drawn as tick marks on Android and enforced-but-invisible on iOS, because UISlider has never had them."
+      >
+        <CollectionView.Row id="brightness-value">
+          <CollectionView.Icon systemImage="sun.max" />
+          <CollectionView.Label>Brightness</CollectionView.Label>
+          <CollectionView.Value>
+            {`${Math.round(brightness * 100)}%`}
+          </CollectionView.Value>
+        </CollectionView.Row>
+        <CollectionView.Row id="brightness">
+          <CollectionView.Slider
+            value={brightness}
+            minimumImage="sun.min"
+            maximumImage="sun.max"
+            onValueChange={setBrightness}
+          />
+        </CollectionView.Row>
+
+        <CollectionView.Row id="volume-value">
+          <CollectionView.Icon systemImage="speaker.wave.3.fill" />
+          <CollectionView.Label>Volume</CollectionView.Label>
+          <CollectionView.Value>{`${volume} / 10`}</CollectionView.Value>
+        </CollectionView.Row>
+        <CollectionView.Row id="volume">
+          <CollectionView.Slider
+            value={volume}
+            minimumValue={0}
+            maximumValue={10}
+            step={1}
+            // Only on release. A continuous handler here would be ten commits per drag for a value
+            // that is only meaningful once the finger lifts.
+            onSlidingComplete={setVolume}
+          />
+        </CollectionView.Row>
       </CollectionView.Section>
 
       <CollectionView.Section

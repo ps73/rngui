@@ -155,19 +155,42 @@ export const Checkmark = tagged<Record<string, never>>(
 )
 
 export interface IconProps {
-  /** SF Symbol name, e.g. `calendar` or `clock`. */
-  systemImage: string
+  /**
+   * SF Symbol name, e.g. `calendar` or `clock`.
+   *
+   * Optional only so `monogram` can stand alone. An icon with neither draws nothing.
+   */
+  systemImage?: string
+  /**
+   * The Android glyph, named directly.
+   *
+   * Android renders Material Symbols, and native carries a curated SF-to-Material map — but the
+   * two sets overlap in meaning and never in naming, so the map cannot be complete. Set this when
+   * the symbol you want is not covered, or when the mapped one is not the one you meant. Wins over
+   * `systemImage` on Android; ignored on iOS.
+   */
+  materialSymbol?: string
   /** Overrides the glyph colour. Defaults to the row's tint. */
   color?: string
   /**
-   * Draws the glyph white on a rounded tile of this colour — the Settings look.
+   * Draws the glyph white on a filled container of this colour.
    *
-   * Replaces `color` rather than combining with it. Settings reserves colour for the square and
-   * always draws the glyph on it in white, which is what keeps a screen of twenty different hues
-   * legible.
+   * **The shape is the platform's**: Settings' 29pt rounded square on iOS, M3's 40dp circle on
+   * Android. A screen after the Pixel Settings look sets no background at all — Pixel draws a bare
+   * monochrome glyph, and a coloured container there is the iOS screen in disguise.
+   *
+   * Replaces `color` rather than combining with it: colour belongs to the container, and the glyph
+   * on it is always white, which is what keeps a screen of twenty different hues legible.
    */
   background?: string
-  /** The glyph's point size. Ignored when `background` is set — the tile decides its own. */
+  /**
+   * One or two letters instead of a glyph — a contact's initials, in the same container.
+   *
+   * Needs `background`; letters with nothing behind them read as a layout bug rather than as an
+   * avatar. Wins over `systemImage` and `materialSymbol`, and native truncates to two characters.
+   */
+  monogram?: string
+  /** The glyph's point size. Ignored when `background` is set — the container decides its own. */
   size?: number
 }
 
@@ -216,6 +239,57 @@ export interface ToggleProps {
 
 /** A trailing `UISwitch`. */
 export const Switch = tagged<ToggleProps>('switch', 'CollectionView.Switch')
+
+export interface SliderProps {
+  /**
+   * Controlled, like every other control here — with one thing native keeps to itself.
+   *
+   * A drag reports a value per frame, so the commit carrying frame N reaches native while the thumb
+   * is at frame N+3. Native therefore ignores this prop for as long as a drag is in progress and
+   * takes it again on release: assigning the stale value would drag the thumb backwards under the
+   * finger. Setting it from anywhere *other* than the drag — a reset button, a value arriving from
+   * the network — lands immediately, which is the case that matters.
+   */
+  value?: number
+  /** Defaults to 0. */
+  minimumValue?: number
+  /** Defaults to 1, so an unbounded slider is a fraction. */
+  maximumValue?: number
+  /**
+   * Quantises the value. Unset is continuous.
+   *
+   * Android also *draws* the stops; iOS has never had tick marks on a `UISlider`, so there the step
+   * is enforced without being shown.
+   */
+  step?: number
+  /**
+   * SF Symbols flanking the track — the small and large suns on a brightness row.
+   *
+   * `UISlider` has slots for exactly these. Android has no such property, so the Material slider is
+   * laid out between two icon views to the same effect.
+   */
+  minimumImage?: string
+  maximumImage?: string
+  /**
+   * Fires continuously while the thumb moves — sixty times a second during a drag.
+   *
+   * **Prefer `onSlidingComplete` for anything expensive.** A caller that recomputes a screen from
+   * this is doing sixty React commits a second, which is the cost this library exists to avoid.
+   * This one is for the label that has to track the thumb.
+   */
+  onValueChange?: (value: number) => void
+  /** Fires once, when the finger lifts. What most callers should act on. */
+  onSlidingComplete?: (value: number) => void
+  disabled?: boolean
+}
+
+/**
+ * A `UISlider` on iOS, a Material 3 `Slider` on Android.
+ *
+ * The control fills the row, so it takes no `Label` beside it — M3 puts a slider's readout in its
+ * own value bubble and iOS in a row above, and neither is a trailing accessory.
+ */
+export const Slider = tagged<SliderProps>('slider', 'CollectionView.Slider')
 
 /**
  * A trailing filled/hollow circle — the multi-select affordance.

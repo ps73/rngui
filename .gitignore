@@ -179,6 +179,10 @@ local.properties
 packages/*/android/generated/
 **/build/generated/ios/
 
+# The Material Symbols source face: 14 MB of input for a 700 KB committed artifact. Fetch it with
+# the command `npm run gen:material-symbols` prints when it is missing.
+packages/*/assets/material-symbols-source.ttf
+
 # react-native-builder-bob output
 lib/
 

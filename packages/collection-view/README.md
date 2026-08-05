@@ -12,9 +12,11 @@ UIKit's. What this package adds is a way to describe them from React.
 npm install @rngui/collection-view
 ```
 
-Requires the New Architecture. **iOS only today** — Android is a stub that accepts every prop and
-renders nothing, so shared screens keep building and running while the `RecyclerView` backend is
-written.
+Requires the New Architecture. **iOS and Android**: a real `UICollectionView` on one, a real
+`RecyclerView` on the other. Each platform gets its own idiom rather than one drawn in the other's
+colours — see [Platform differences](#platform-differences) for where they deliberately diverge, and
+[what does nothing on Android](#documented-no-ops) for the short list of props that are accepted and
+ignored.
 
 ## A first list
 
@@ -69,22 +71,23 @@ second source of truth to disagree with the children.
 | `Description` | Second line. `tinted` draws it in the tint colour rather than grey |
 | `Value`       | Trailing detail text                                               |
 
-| Accessories                         |                                                  |
-| ----------------------------------- | ------------------------------------------------ |
-| `Icon`                              | `systemImage` · `color` · `background` · `size`  |
-| `Badge`                             | `color` — the red count bubble, text as children |
-| `Chevron` · `Checkmark` · `Spinner` |                                                  |
-| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`           |
+| Accessories                         |                                                                                 |
+| ----------------------------------- | ------------------------------------------------------------------------------- |
+| `Icon`                              | `systemImage` · `materialSymbol` · `monogram` · `color` · `background` · `size` |
+| `Badge`                             | `color` — the red count bubble, text as children                                |
+| `Chevron` · `Checkmark` · `Spinner` |                                                                                 |
+| `Checkbox` · `Radio`                | `value` · `onValueChange` · `disabled`                                          |
 
-| Controls     |                                                                                                                                          |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| `Switch`     | `value` · `onValueChange` · `disabled`                                                                                                   |
-| `TextField`  | `value` · `onChangeText` · `onFocusChange` · `placeholder` · `keyboardType` · `autoCapitalize` · `returnKeyType` · `secure` · `disabled` |
-| `TextArea`   | the above plus `maxLines` — grows with its content                                                                                       |
-| `Menu`       | `items` · `value` · `onSelect` · `disabled` — a `UIMenu`                                                                                 |
-| `DatePicker` | `value` · `onChange` · `mode` · `variant` · `minimumDate` · `maximumDate`                                                                |
-| `Button`     | `role` · `onPress` · `disabled`                                                                                                          |
-| `Card`       | `value` · `caption` · `systemImage` · `color` — a rich stacked cell that still recycles                                                  |
+| Controls     |                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Switch`     | `value` · `onValueChange` · `disabled`                                                                                                    |
+| `TextField`  | `value` · `onChangeText` · `onFocusChange` · `placeholder` · `keyboardType` · `autoCapitalize` · `returnKeyType` · `secure` · `disabled`  |
+| `TextArea`   | the above plus `maxLines` — grows with its content                                                                                        |
+| `Menu`       | `items` · `value` · `onSelect` · `disabled` — a `UIMenu`                                                                                  |
+| `DatePicker` | `value` · `onChange` · `mode` · `variant` · `minimumDate` · `maximumDate`                                                                 |
+| `Slider`     | `value` · `onValueChange` · `onSlidingComplete` · `minimumValue` · `maximumValue` · `step` · `minimumImage` · `maximumImage` · `disabled` |
+| `Button`     | `role` · `onPress` · `disabled`                                                                                                           |
+| `Card`       | `value` · `caption` · `systemImage` · `color` — a rich stacked cell that still recycles                                                   |
 
 | Swipe actions  |                                                                          |
 | -------------- | ------------------------------------------------------------------------ |
@@ -92,10 +95,12 @@ second source of truth to disagree with the children.
 | `SwipeAction`  | `id` · `title` · `systemImage` · `style` · `backgroundColor` · `onPress` |
 
 An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
-glyph reads as an interactive control. Give it a `background` and it becomes Settings' rounded
-coloured tile instead: a white glyph on a 29pt continuous-corner square, rendered once per
-symbol-and-colour and cached, with the layout width reserved so untiled rows in the same section
-still line up. A `size` reserves its width the same way, which is what keeps a large glyph from
+glyph reads as an interactive control. Give it a `background` and it becomes the platform's own
+icon container instead — Settings' 29pt continuous-corner square on iOS, M3's 40dp circle on
+Android — rendered once per symbol-and-colour and cached, with the layout width reserved so
+untiled rows in the same section still line up. `monogram` puts one or two letters in that
+container rather than a glyph, which is the avatar an address book falls back to; that one is a
+circle on both, because an avatar always has been. A `size` reserves its width the same way, which is what keeps a large glyph from
 eating the row's leading margin.
 
 A `Badge` takes its text as children rather than a number, because iOS puts version strings and a
@@ -263,16 +268,143 @@ A hand-written Fabric component view overrides `mountChildComponentView:` /
 
 ## Android
 
-The view manager accepts the full prop contract and renders nothing, and `Root` withholds hosted
-children there rather than piling them at the origin. In development it warns once, in Metro's
-console, so a blank list is never a mystery.
+A `RecyclerView` with Material 3 grouped cards, not a `FlatList` in a trench coat. The manager
+implements the _generated_ codegen interface rather than declaring its own `@ReactProp` setters, so
+the Kotlin compiler is what keeps it in step with the TypeScript spec — a prop cannot be added on
+one side and forgotten on the other.
 
-It is a `ViewGroupManager` rather than a `SimpleViewManager` deliberately: the iOS component hosts
-arbitrary React children, and a manager whose view is not a group makes the mounting layer throw the
-moment one arrives — which would turn "not implemented yet" into "importing this crashes the app".
+The descriptor model is generated too: `scripts/gen-kotlin-types.mjs` emits `data class`es and
+hand-written `org.json` decoders from the same `src/tree.ts` the Swift model comes from, and both
+platforms decode the _same_ fixture files in their tests. kotlinx.serialization is not used because
+it is a compiler plugin, and React Native app templates — Expo's included — do not put one on the
+root project's classpath.
 
-The manager implements the _generated_ codegen interface rather than declaring its own
-`@ReactProp` setters, so the Kotlin compiler is what keeps it in step with the TypeScript spec.
+`prop → native` in one place:
+
+| Prop                             | Android                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------- |
+| `listAppearance`                 | grouped cards with first/last/middle corner shapes; `plain` is edge-to-edge                 |
+| `appearance` / `darkAppearance`  | resolved against the configuration; a theme flip rebinds the visible rows with no JS commit |
+| `colorScheme`                    | overrides the device's night mode for this list                                             |
+| `sectionIndex`                   | a fast-scroller thumb with a letter bubble — **not** an A–Z rail                            |
+| `contentInset*`                  | padding with `clipToPadding = false`, so rows scroll _through_ the inset                    |
+| `contentInsetAdjustmentBehavior` | system-bar insets; `never` applies none                                                     |
+| `decelerationRate`               | `0` suppresses the fling exactly; other values approximate through fling velocity           |
+| `scrollTo`                       | `scrollToPosition(0)` for the `(0, 0)` case, which is exact                                 |
+
+### Material 3
+
+The Android side follows [the M3 list spec](https://m3.material.io/components/lists/specs) rather
+than translating the iOS look. Concretely:
+
+- Every default colour is an **M3 colour role** — `surface`, `surfaceContainer`, `onSurface`,
+  `onSurfaceVariant`, `outlineVariant`, `primary`, `secondaryContainer` — resolved from the app's
+  Material theme, so an unthemed list inherits dynamic colour on Android 12+. Anything set in
+  `appearance` still wins.
+- Selection controls are the real components: `MaterialSwitch`, `MaterialCheckBox`,
+  `MaterialRadioButton`. The row owns the tap; the control displays state.
+- Items are 56dp minimum with 16dp horizontal padding.
+- A **selected** item — a checked checkbox or radio — takes `secondaryContainer` and a larger corner
+  radius. The shape changing is the point; colour alone is not how M3 signals selection.
+
+`androidListStyle` picks between the two arrangements the spec defines:
+
+|            | `standard`                   | `segmented`              |
+| ---------- | ---------------------------- | ------------------------ |
+| Items      | flush                        | own container, 4dp gap   |
+| Separators | dividers                     | none — the gaps separate |
+| Corners    | square, or grouped-card ends | uniformly rounded        |
+
+Unset follows `listAppearance`: `segmented` for `insetGrouped` and `grouped`, `standard` for
+`plain`. It is ignored on iOS, where the shape comes from `listAppearance` alone.
+
+The library brings `com.google.android.material` and themes its own context with
+`Theme.Material3.DayNight`. That is not optional — Material widgets read theme attributes at
+construction and crash without them — and supplying it here rather than requiring one of the
+consuming app is what keeps this a library you install rather than one you configure.
+
+### Platform differences
+
+Decisions, not gaps. Each one is the platform's own idiom rather than the other's.
+
+| Concept                         | iOS                                   | Android                                                                                                                                                |
+| ------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `insetGrouped`                  | `UICollectionLayoutListConfiguration` | M3 containers — `segmented` by default, see `androidListStyle`                                                                                         |
+| `plain` + pinned headers        | free from compositional layout        | a hand-written `ItemDecoration`, with push-off                                                                                                         |
+| `systemImage`                   | SF Symbols                            | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
+| Section index                   | an A–Z rail                           | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
+| `plain` pinned headers          | **iOS 26+ only** — see below          | always pinned, via a hand-written `ItemDecoration`                                                                                                     |
+| Swipe actions                   | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
+| `datePickerStyle: 'wheels'`     | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
+| `datePickerMode: 'dateAndTime'` | one combined wheel                    | two dialogs, chained — Material has no combined picker                                                                                                 |
+| `Slider`                        | `UISlider` — thin track, capsule knob | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |
+| `Slider` `step`                 | enforced, but not drawn               | enforced **and drawn**, as tick marks. `UISlider` has never had them                                                                                   |
+| `Slider` min/max images         | `minimumValueImage` slots             | icon views laid out either side; Material's slider has no such property                                                                                |
+| `Icon` `background`             | Settings' 29pt rounded square         | M3's 40dp circle. The tile is Apple's — Android's leading element is a bare icon or a round avatar                                                     |
+| `Icon` `monogram`               | initials on a circle                  | the same, and the one case where the container shape does **not** differ: an avatar is round on both                                                   |
+| Overscroll                      | rubber-band bounce                    | stretch or glow                                                                                                                                        |
+| `contentSize.height`            | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
+
+`keyboardShouldPersistTaps` is `ScrollView`'s prop by the same name — `never` (default), `always`,
+or `handled`, where "handled" means the row under the finger has an `onPress`. One deliberate
+difference from `ScrollView`: there, `never` also swallows the tap that dismissed the keyboard; here
+the row's `onPress` still fires, because the tap target _is_ the row and eating the first tap after
+typing reads as a dropped tap. `keyboardDismissMode` defaults to `onDrag` on both platforms, so
+scrolling dismisses.
+
+**Sticky headers in a `plain` list need iOS 26.** Below that they scroll with their rows, and the
+reason is a trade rather than an omission: `pinToVisibleBounds` on a `.list(using:)` section does
+not pin on iOS 18 _and_ it silently disables that section's swipe actions. Both symptoms, one
+cause — swipe works on 18 in a grouped list, which never sets the pin, and fails in a plain one,
+which did. Setting it was costing a working feature to buy a broken one, so it is now gated on 26.
+Android is unaffected: its pinned headers are drawn by an `ItemDecoration` of our own and owe
+nothing to UIKit.
+
+`contentOffset.y` is **exact on both**. On Android it is accumulated from `onScrolled`'s `dy` rather
+than read from `computeVerticalScrollOffset()`, which is an average-item-height estimate that does
+not return exactly zero at the top — and `@gorhom/bottom-sheet` compares it against `0`.
+
+### `materialSymbol`
+
+`systemImage` names an SF Symbol, and the two icon sets overlap in meaning but never in naming, so
+Android carries a curated map. An unmapped name renders nothing and warns once. Set `materialSymbol`
+on an `<Icon>` to name the Android glyph directly; it wins over `systemImage` there and is ignored on
+iOS.
+
+The bundled face is **subset** — the full Material Symbols variable font is 14 MB — so a
+`materialSymbol` outside the subset also renders nothing and warns. Add it to
+`scripts/symbol-map.mjs` and re-run `npm run gen:material-symbols`.
+
+### Documented no-ops
+
+Accepted so shared screens keep type-checking, and deliberately doing nothing:
+
+| Prop                                        | Why                                                                    |
+| ------------------------------------------- | ---------------------------------------------------------------------- |
+| `sectionIndexRowHeight`                     | sets the per-letter height of an A–Z rail. There is no rail on Android |
+| `automaticallyAdjustsScrollIndicatorInsets` | the indicator is drawn inside the list's padding already               |
+| `keyboardDismissMode: 'interactive'`        | maps to `onDrag`. Android has no interactive dismissal                 |
+| `datePickerStyle: 'inline' \| 'wheels'`     | both fall back to the platform dialog, and warn once                   |
+
+### Insets and navigation headers
+
+Content insets are computed from **how much system chrome actually overlaps the list**, not from the
+window's own insets. Under a transparent header the list starts at the top of the window and takes
+the full status-bar inset; under an ordinary opaque toolbar it starts below one already, and taking
+it again would leave a bar-shaped gap.
+
+What Android has no equivalent for is the _header's own_ height. On iOS
+`contentInsetAdjustmentBehavior: automatic` folds in the navigation bar because UIKit knows how tall
+it is; a toolbar's height is not a window inset, so `headerTransparent` on Android is a promise the
+list cannot keep on its own. Use an opaque header, or pass the height yourself through
+`contentInset={{ top }}`.
+
+### Host rows
+
+`<CollectionView.Host>` children are mounted into an invisible parking bay and reparented into the
+cell that owns them. A holder releases its child only if it still owns it — during a reload the
+incoming holder binds _before_ the outgoing one is recycled, so an unguarded release blanks a row
+that is on screen and correct.
 
 ## License
 
