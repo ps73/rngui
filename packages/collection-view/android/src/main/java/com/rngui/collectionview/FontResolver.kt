@@ -6,17 +6,55 @@ import android.os.Build
 import android.util.TypedValue
 import android.widget.TextView
 import com.facebook.react.views.text.ReactFontManager
-import com.rngui.collectionview.generated.FontDesign
 import com.rngui.collectionview.generated.FontSpec
 
 /**
  * Turns a `FontSpec` into a typeface, a size and a set of variation settings.
  *
- * `family` goes through `ReactFontManager`, which is the whole point: a face registered by
+ * An app face goes through `ReactFontManager`, which is the whole point: a face registered by
  * `expo-font` resolves here exactly the way React Native's own `fontFamily` prop resolves it, so a
  * list and a `<Text>` beside it end up with the same file. Reimplementing the lookup would work
  * until the first app that loads a font at runtime.
+ *
+ * **The five generic names are the exception, and they have to be.** `ReactFontManager` has no
+ * table for them — handed `ui-monospace` it finds no asset, falls through to
+ * `Typeface.create("ui-monospace", style)`, and Android answers with the default sans, silently.
+ * On iOS React Native does map them, so deferring to it there and here would mean `ui-monospace`
+ * is monospaced on one platform and not the other. The table below is what keeps the vocabulary
+ * meaning the same thing on both.
  */
+/** What a generic family name resolves to among Android's system faces. */
+internal enum class GenericFamily {
+  SANS,
+  SERIF,
+  MONOSPACE,
+}
+
+/**
+ * The five generic family names, or null for "this is an app face".
+ *
+ * Separate from the `Typeface` it produces, and `internal` rather than private, so the part that
+ * can actually be wrong — the spelling of the five names, and the case-insensitivity — is testable
+ * on the JVM. `Typeface.create` is a stub in `android.jar` that throws, so anything touching it
+ * has to be an instrumented test; this table does not have to pay that.
+ *
+ * Lowercased before matching, as React Native's iOS table is, so the two cannot disagree about
+ * `UI-Rounded`. Note `ui-monospace`, CSS's spelling and React Native's — not UIKit's
+ * `monospaced`, which is deliberately *not* accepted here rather than quietly aliased, so one
+ * spelling means one thing on both platforms.
+ *
+ * `ui-rounded` is SF Rounded, and Android has no counterpart in the system faces. Falling back to
+ * the default face is the honest degradation: Roboto is not rounded, and substituting an unrelated
+ * family to be *different* would be worse than being plain.
+ */
+internal fun genericFamilyOf(family: String): GenericFamily? =
+  when (family.lowercase()) {
+    "system-ui", "ui-sans-serif", "ui-rounded" -> GenericFamily.SANS
+    "ui-serif" -> GenericFamily.SERIF
+    "ui-monospace" -> GenericFamily.MONOSPACE
+    else -> null
+  }
+
 object FontResolver {
 
   /**
@@ -44,18 +82,20 @@ object FontResolver {
 
     val family = spec?.family
     if (family != null) {
-      return ReactFontManager.getInstance().getTypeface(family, style, context.assets)
+      return generic(family, style)
+        ?: ReactFontManager.getInstance().getTypeface(family, style, context.assets)
     }
 
-    return when (spec?.design) {
-      FontDesign.monospaced -> Typeface.create(Typeface.MONOSPACE, style)
-      FontDesign.serif -> Typeface.create(Typeface.SERIF, style)
-      // `rounded` is SF Rounded, and Android has no counterpart in the system faces. Falling back
-      // to the default face is the honest degradation: Roboto is not rounded, and substituting an
-      // unrelated family to be *different* would be worse than being plain.
-      else -> Typeface.create(Typeface.DEFAULT, style)
-    }
+    return Typeface.create(Typeface.DEFAULT, style)
   }
+
+  private fun generic(family: String, style: Int): Typeface? =
+    when (genericFamilyOf(family)) {
+      GenericFamily.SANS -> Typeface.create(Typeface.DEFAULT, style)
+      GenericFamily.SERIF -> Typeface.create(Typeface.SERIF, style)
+      GenericFamily.MONOSPACE -> Typeface.create(Typeface.MONOSPACE, style)
+      null -> null
+    }
 
   /**
    * `'wght=620,wdth=110'` → `Paint.setFontVariationSettings("'wght' 620, 'wdth' 110")`.

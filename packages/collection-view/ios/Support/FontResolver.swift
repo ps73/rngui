@@ -7,12 +7,13 @@ import UIKit
  * Handles the four things a list actually needs from typography, and they compose in a
  * specific order because each one is expressed differently in UIKit:
  *
- * 1. **The face.** An app-bundled family (whatever `expo-font` registered it as) or the system
- *    font. A bundled font is looked up by PostScript name first and by family name second,
- *    because the two differ often enough — `expo-font` registers under the key you gave
- *    `useFonts`, which is usually neither.
- * 2. **The design.** `UIFontDescriptor.SystemDesign`, giving the `ui-rounded`, `ui-serif` and
- *    `ui-monospace` equivalents. Only meaningful for the system font.
+ * 1. **The face.** One `family`, holding either a generic name or an app-bundled one. The five
+ *    generic names are CSS's and React Native's — `RCTFontUtils` maps the same five onto
+ *    `UIFontDescriptor.SystemDesign` for `<Text>`, and this is the same table so that a row and
+ *    a label beside it resolve identically.
+ * 2. **Everything else** is a bundled family, looked up by PostScript name first and by family
+ *    name second, because the two differ often enough — `expo-font` registers under the key you
+ *    gave `useFonts`, which is usually neither.
  * 3. **Variable-font axes.** Applied through Core Text, since UIKit has no API for them.
  * 4. **Dynamic Type.** Last, because scaling has to wrap a finished font.
  *
@@ -51,13 +52,11 @@ enum FontResolver {
       || spec.size != nil
       || spec.weight != nil
       || spec.variations != nil
-      || (spec.design != nil && spec.design != .default)
   }
 
   private static func cacheKey(_ spec: FontSpec, fallback: UIFont) -> NSString {
     let parts: [String] = [
       spec.family ?? "",
-      spec.design?.rawValue ?? "",
       // A closure rather than `String.init`, which is ambiguous for `Double`.
       spec.size.map { String($0) } ?? "",
       spec.weight ?? "",
@@ -70,28 +69,36 @@ enum FontResolver {
   }
 
   private static func baseFont(_ spec: FontSpec, size: CGFloat, fallback: UIFont) -> UIFont {
+    var design: UIFontDescriptor.SystemDesign?
+
     if let family = spec.family, !family.isEmpty {
-      // PostScript name first, then family. `expo-font` registers under the key passed to
-      // `useFonts`, which may be either — and asking for the wrong one returns nil rather
-      // than falling back.
-      if let named = UIFont(name: family, size: size) {
+      // A generic name is a design on the system font, and never a face to look up: no device
+      // has a family called `ui-rounded`, so falling through to the lookup below would warn
+      // about a font the caller never claimed to have registered.
+      if let generic = systemDesign(family) {
+        design = generic
+      } else if let named = UIFont(name: family, size: size) {
+        // PostScript name first, then family. `expo-font` registers under the key passed to
+        // `useFonts`, which may be either — and asking for the wrong one returns nil rather
+        // than falling back.
         return named
+      } else {
+        let descriptor = UIFontDescriptor(fontAttributes: [.family: family])
+        let matched = UIFont(descriptor: descriptor, size: size)
+        // A failed family match yields the system font rather than nil, so compare to detect it.
+        if matched.familyName == family {
+          return matched
+        }
+        #if DEBUG
+        print(
+          "[@rngui/collection-view] Font family '\(family)' is neither a generic name "
+            + "(system-ui, ui-sans-serif, ui-serif, ui-rounded, ui-monospace) nor a registered "
+            + "font. With expo-font, use the key you passed to useFonts."
+        )
+        #endif
       }
-      let descriptor = UIFontDescriptor(fontAttributes: [.family: family])
-      let matched = UIFont(descriptor: descriptor, size: size)
-      // A failed family match yields the system font rather than nil, so compare to detect it.
-      if matched.familyName == family {
-        return matched
-      }
-      #if DEBUG
-      print(
-        "[@rngui/collection-view] Font family '\(family)' is not registered. "
-          + "With expo-font, use the key you passed to useFonts."
-      )
-      #endif
     }
 
-    let design = systemDesign(spec.design)
     let weightValue = weight(from: spec.weight)
 
     // Neither a design nor a weight to apply: keep the slot's own face and only resize it, so
@@ -114,7 +121,7 @@ enum FontResolver {
     }
     // An explicit weight wins; otherwise inherit the slot's own. Applying a design starts from the
     // plain system font, which is *regular* — so without this a section header asking only for
-    // `design: 'rounded'` comes back SF Rounded Regular instead of SF Rounded Semibold, quietly
+    // `family: 'ui-rounded'` comes back SF Rounded Regular instead of SF Rounded Semibold, quietly
     // losing the emphasis that made it read as a header.
     let effectiveWeight = weightValue?.rawValue ?? inheritedWeight(of: fallback)
 
@@ -136,13 +143,22 @@ enum FontResolver {
     return traits?[.weight] as? CGFloat
   }
 
-  /// `nil` for "no design asked for", which is not the same as `.default`.
-  private static func systemDesign(_ design: FontDesign?) -> UIFontDescriptor.SystemDesign? {
-    switch design {
-    case .rounded: return .rounded
-    case .serif: return .serif
-    case .monospaced: return .monospaced
-    case .default, .unknown, nil: return nil
+  /**
+   * The five generic family names, or `nil` for "this is an app font".
+   *
+   * The same table as `RCTFontUtils.RCTGetFontDescriptorSystemDesign`, lowercased the same way,
+   * so `<Text style={{ fontFamily: 'ui-rounded' }}>` and a row asking for `ui-rounded` cannot
+   * disagree. `system-ui` and `ui-sans-serif` resolve to `.default` rather than to nil, because
+   * naming one is an explicit request for the system face — that is what lets a row override a
+   * bundled family set on the root.
+   */
+  private static func systemDesign(_ family: String) -> UIFontDescriptor.SystemDesign? {
+    switch family.lowercased() {
+    case "system-ui", "ui-sans-serif": return UIFontDescriptor.SystemDesign.default
+    case "ui-serif": return .serif
+    case "ui-rounded": return .rounded
+    case "ui-monospace": return .monospaced
+    default: return nil
     }
   }
 

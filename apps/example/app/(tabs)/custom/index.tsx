@@ -4,23 +4,30 @@ import { router } from 'expo-router'
 import {
   CollectionView,
   type ColorScheme,
-  type FontDesign,
+  type FontFamily,
 } from '@rngui/collection-view'
 import { StyleSheet } from 'react-native-unistyles'
 import { INTER_FAMILY } from '../../../src/fonts'
 
 const SCHEMES: readonly ColorScheme[] = ['system', 'light', 'dark']
-const DESIGNS: readonly FontDesign[] = [
-  'default',
-  'rounded',
-  'serif',
-  'monospaced',
+
+/**
+ * Four generic names and one bundled face, in one list — because `family` takes both.
+ *
+ * The generic names are the ones React Native's `<Text>` already understands, so the chip labels
+ * are literally the values you would type into either component.
+ */
+const FAMILIES: readonly FontFamily[] = [
+  'system-ui',
+  'ui-serif',
+  'ui-rounded',
+  'ui-monospace',
+  INTER_FAMILY,
 ]
 /** The two arrangements https://m3.material.io/components/lists/specs defines. */
 const ANDROID_LIST_STYLES = ['standard', 'segmented'] as const
 
 const VARIANTS = ['grouped', 'inverted'] as const
-const FACES = ['system', 'Inter'] as const
 
 /**
  * Points on Inter's `wght` axis, including two no static family could offer.
@@ -44,12 +51,11 @@ const WEIGHT_AXIS = [300, 350, 400, 550, 700, 900] as const
  */
 export default function CustomScreen() {
   const [colorScheme, setColorScheme] = useState<ColorScheme>('system')
-  const [design, setDesign] = useState<FontDesign>('rounded')
+  const [family, setFamily] = useState<FontFamily>('ui-rounded')
   const [variant, setVariant] = useState<(typeof VARIANTS)[number]>('grouped')
   const [listStyle, setListStyle] =
     useState<(typeof ANDROID_LIST_STYLES)[number]>('segmented')
   const [expanded, setExpanded] = useState(false)
-  const [face, setFace] = useState<(typeof FACES)[number]>('system')
   const [weightAxis, setWeightAxis] =
     useState<(typeof WEIGHT_AXIS)[number]>(400)
   const [brightness, setBrightness] = useState(0.4)
@@ -58,16 +64,14 @@ export default function CustomScreen() {
   /**
    * One spec, shared by rows, headers and footers.
    *
-   * `family` and `design` are mutually exclusive by nature rather than by rule: a
-   * `UIFontDescriptor.SystemDesign` is a property of the *system* font, so once a bundled face is
-   * named there is nothing for it to apply to — and `FontResolver` returns the named font before
-   * it ever looks at the design. Sending both would not break anything; it would just quietly mean
-   * one of them.
+   * One field decides the face, whether that face is a generic name or a bundled one — the same
+   * shape `<Text style={{ fontFamily }}>` has. The axis only rides along for the variable font,
+   * because a generic name has no axes to drive.
    */
   const font =
-    face === 'Inter'
-      ? { family: INTER_FAMILY, variations: `wght=${weightAxis}` }
-      : { design }
+    family === INTER_FAMILY
+      ? { family, variations: `wght=${weightAxis}` }
+      : { family }
 
   return (
     <CollectionView.Root
@@ -107,23 +111,14 @@ export default function CustomScreen() {
 
       <CollectionView.Section
         header="Typeface"
-        footer="`system` uses SF and the design below. `Inter` is a bundled variable font, registered by expo-font and resolved natively by name — no asset pipeline, no per-row styling, and the design row stops applying because a system design is a property of the system font."
+        footer="One `family`, taking the same five generic names React Native's <Text> takes — on iOS they become a UIFontDescriptor.SystemDesign, on Android the matching system face, with ui-rounded degrading to the default one because Android has no rounded family. `Inter` is a bundled variable font, registered by expo-font and resolved natively by name."
       >
         <CollectionView.Host id="face" height={64}>
-          <Chips options={FACES} value={face} onChange={setFace} />
+          <Chips options={FAMILIES} value={family} onChange={setFamily} />
         </CollectionView.Host>
       </CollectionView.Section>
 
-      {face === 'system' ? (
-        <CollectionView.Section
-          header="Font design"
-          footer="UIFontDescriptor.SystemDesign — the ui-rounded, ui-serif and ui-monospace equivalents. Applied to row labels, headers and footers, and scaled with Dynamic Type."
-        >
-          <CollectionView.Host id="design" height={64}>
-            <Chips options={DESIGNS} value={design} onChange={setDesign} />
-          </CollectionView.Host>
-        </CollectionView.Section>
-      ) : (
+      {family === INTER_FAMILY && (
         <CollectionView.Section
           header="Weight axis"
           footer="Inter's `wght` axis, as `variations: 'wght=550'`. Applied through Core Text, which UIKit has no API for. 350 and 550 are the point: `weight` can only name the nine weights a static family ships, and an axis is continuous."
@@ -285,7 +280,7 @@ function Chips<T extends string | number>({
           >
             <Text
               numberOfLines={1}
-              // The four font-design labels are long enough to wrap at this width otherwise.
+              // The generic family names are long enough to wrap at this width otherwise.
               adjustsFontSizeToFit
               minimumFontScale={0.8}
               style={[styles.chipLabel, active && styles.chipLabelActive]}

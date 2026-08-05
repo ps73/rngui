@@ -61,7 +61,7 @@ export type {
   ButtonRole,
   DatePickerMode,
   DatePickerStyle,
-  FontDesign,
+  FontFamily,
   FontSpec,
   GradientSpec,
   SectionLayout,
@@ -84,7 +84,7 @@ export type {
  *
  * ```tsx
  * <CollectionView.Root
- *   appearance={{ rowBackground: '#fff', font: { design: 'rounded' } }}
+ *   appearance={{ rowBackground: '#fff', font: { family: 'ui-rounded' } }}
  *   darkAppearance={{ rowBackground: '#1c1c1e' }}
  * >
  *   <CollectionView.Section header="General" footer="Applies to this device only.">

@@ -24,6 +24,9 @@ integration exported from `@rngui/collection-view/bottom-sheet`.
 
 **Theming.** Light and dark appearance resolution, tint and background overrides, per-row fonts,
 and Material 3 Expressive styling on Android rather than iOS drawn in Android colours.
+`FontSpec.family` takes the same names React Native's `<Text>` takes — the five CSS generic
+families (`system-ui`, `ui-sans-serif`, `ui-serif`, `ui-rounded`, `ui-monospace`) or a face the app
+registered — so a row and a label beside it resolve identically.
 
 ### Known limits
 

@@ -199,25 +199,6 @@ enum class SwipeActionStyle(val raw: String) {
 }
 
 /**
- * Generated from `FontDesign` in tree.ts.
- */
-enum class FontDesign(val raw: String) {
-  default("default"),
-  rounded("rounded"),
-  serif("serif"),
-  monospaced("monospaced"),
-
-  /** A value this binary does not recognise. */
-  unknown("");
-
-  companion object {
-    private val byRaw = entries.associateBy { it.raw }
-
-    fun from(raw: String): FontDesign = byRaw[raw] ?: unknown
-  }
-}
-
-/**
  * Generated from `HeaderBackgroundStyle` in tree.ts.
  */
 enum class HeaderBackgroundStyle(val raw: String) {
@@ -696,13 +677,12 @@ data class SectionSpec(
 /**
  * Font selection. Set on the root as the default, or per slot to override.
  *
- * `family` names an app-bundled face — whatever name it is registered under, which for
- * `expo-font` is the key passed to `useFonts`. Leave it unset to stay on the system font and
- * pick a `design` instead.
+ * Leave `family` unset to keep whatever face the slot normally uses — which is not the same as
+ * asking for `system-ui`, because a section header is heavier than a row label and only the
+ * former keeps that.
  */
 data class FontSpec(
   val family: String? = null,
-  val design: FontDesign? = null,
   /**
    * Points. Omit to take the size of the text style the slot normally uses.
    */
@@ -728,7 +708,6 @@ data class FontSpec(
     fun from(json: JSONObject): FontSpec =
       FontSpec(
         family = json.string("family"),
-        design = json.string("design")?.let(FontDesign::from),
         size = json.double("size"),
         weight = json.string("weight"),
         variations = json.string("variations"),

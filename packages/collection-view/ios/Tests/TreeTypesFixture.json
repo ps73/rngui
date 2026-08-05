@@ -30,7 +30,6 @@
           "secondaryLabelTinted": true,
           "font": {
             "family": "Tree.sections[0].rows[0].font.family",
-            "design": "monospaced",
             "size": 22,
             "weight": "Tree.sections[0].rows[0].font.weight",
             "variations": "Tree.sections[0].rows[0].font.variations",
@@ -117,7 +116,6 @@
     "sectionSpacing": 165,
     "font": {
       "family": "Tree.appearance.font.family",
-      "design": "monospaced",
       "size": 176,
       "weight": "Tree.appearance.font.weight",
       "variations": "Tree.appearance.font.variations",
@@ -125,7 +123,6 @@
     },
     "headerFont": {
       "family": "Tree.appearance.headerFont.family",
-      "design": "monospaced",
       "size": 187,
       "weight": "Tree.appearance.headerFont.weight",
       "variations": "Tree.appearance.headerFont.variations",
@@ -133,7 +130,6 @@
     },
     "footerFont": {
       "family": "Tree.appearance.footerFont.family",
-      "design": "monospaced",
       "size": 198,
       "weight": "Tree.appearance.footerFont.weight",
       "variations": "Tree.appearance.footerFont.variations",
@@ -162,7 +158,6 @@
     "sectionSpacing": 231,
     "font": {
       "family": "Tree.darkAppearance.font.family",
-      "design": "monospaced",
       "size": 242,
       "weight": "Tree.darkAppearance.font.weight",
       "variations": "Tree.darkAppearance.font.variations",
@@ -170,7 +165,6 @@
     },
     "headerFont": {
       "family": "Tree.darkAppearance.headerFont.family",
-      "design": "monospaced",
       "size": 253,
       "weight": "Tree.darkAppearance.headerFont.weight",
       "variations": "Tree.darkAppearance.headerFont.variations",
@@ -178,7 +172,6 @@
     },
     "footerFont": {
       "family": "Tree.darkAppearance.footerFont.family",
-      "design": "monospaced",
       "size": 264,
       "weight": "Tree.darkAppearance.footerFont.weight",
       "variations": "Tree.darkAppearance.footerFont.variations",
