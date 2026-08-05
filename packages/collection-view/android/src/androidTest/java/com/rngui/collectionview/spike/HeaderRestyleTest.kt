@@ -2,7 +2,6 @@ package com.rngui.collectionview.spike
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.widget.TextView
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.ext.junit.rules.ActivityScenarioRule
@@ -37,9 +36,9 @@ import org.junit.runner.RunWith
  * a header is actually pinned, which is why it went unnoticed.
  *
  * The decoration draws into the `RecyclerView`'s canvas rather than adding a view, so there is
- * nothing in the hierarchy to query. The test reads the header view the decoration built — see
- * [StickyHeaderDecoration.headerHolder] — and asserts on the colour it is *currently* using, which
- * is the thing the eye would see.
+ * nothing in the hierarchy to query. The test asks the decoration what colour it is *currently*
+ * drawing the title in — see [StickyHeaderDecoration.pinnedHeaderTextColor] — which is the thing
+ * the eye would see.
  */
 @RunWith(AndroidJUnit4::class)
 class HeaderRestyleTest {
@@ -116,12 +115,11 @@ class HeaderRestyleTest {
   }
 
   private fun headerTextColor(): Int {
-    var color = 0
+    var color: Int? = null
     InstrumentationRegistry.getInstrumentation().runOnMainSync {
-      val holder = requireNotNull(decoration.headerHolder) { "no pinned header was built" }
-      color = (holder.itemView as TextView).currentTextColor
+      color = decoration.pinnedHeaderTextColor()
     }
-    return color
+    return requireNotNull(color) { "no pinned header was built" }
   }
 
   @Test

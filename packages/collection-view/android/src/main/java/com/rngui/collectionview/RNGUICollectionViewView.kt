@@ -229,6 +229,17 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   private val decoration = GroupDecoration(listStyle())
 
+  /**
+   * The last set of gesture-exclusion rects handed to the system, so an unchanged one is not handed
+   * over again — see [updateGestureExclusion].
+   *
+   * Declared here with the rest of the state rather than beside the method that uses it. Nothing
+   * reads it during construction, so it was safe either way; this file already carries three
+   * separate notes about initialization order, and being the one field that ignores them is how
+   * that stops being a rule anybody follows.
+   */
+  private var exclusionRects: List<Rect> = emptyList()
+
   private val stickyHeaders = StickyHeaderDecoration(flattened, enabled = false)
 
   private val sectionIndex = SectionIndexView(context, list)
@@ -441,9 +452,6 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     exclusionRects = rects
     list.systemGestureExclusionRects = rects
   }
-
-  /** The last set handed to the system, so an unchanged one is not handed over again. */
-  private var exclusionRects: List<Rect> = emptyList()
 
   /**
    * Resigns focus from whatever holds it inside the list.

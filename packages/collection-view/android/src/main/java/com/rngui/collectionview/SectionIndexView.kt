@@ -45,6 +45,16 @@ class SectionIndexView(context: Context, private val list: RecyclerView) : View(
       textSize = context.dp(20).toFloat()
     }
 
+  /**
+   * The thumb's current fill, for the tests that check a restyle reached this far.
+   *
+   * The thumb is drawn from a `Paint` rather than being a view with a background, so there is
+   * nothing else to read it off — and it is only ever visible mid-scroll, which rules out a
+   * screenshot. See [restyle].
+   */
+  @androidx.annotation.VisibleForTesting val thumbColor: Int
+    get() = thumbPaint.color
+
   private val thumbRect = RectF()
   private var dragging = false
   private var fraction = 0f

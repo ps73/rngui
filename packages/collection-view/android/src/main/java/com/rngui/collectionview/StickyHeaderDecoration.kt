@@ -37,18 +37,24 @@ class StickyHeaderDecoration(
   var pinnedSectionId: String? = null
     private set
 
-  /**
-   * The reused header view, or null until one has been drawn.
-   *
-   * `internal` rather than private so `HeaderRestyleTest` can read the view it produces — the
-   * header is drawn into a canvas rather than added to the hierarchy, so there is no other way to
-   * ask what colour it is currently using. Same reason `SwipeActionsCallback` exposes its open
-   * state.
-   */
-  internal var headerHolder: RecyclerView.ViewHolder? = null
-    private set
-
+  private var headerHolder: RecyclerView.ViewHolder? = null
   private var boundPosition = RecyclerView.NO_POSITION
+
+  /**
+   * The colour the pinned header is drawing its title in right now, or null if none is pinned.
+   *
+   * **The only way to ask.** The header is drawn into the `RecyclerView`'s canvas rather than added
+   * to the hierarchy, so no view traversal finds it and no screenshot distinguishes its text from
+   * the rows scrolling underneath — the `plain` header is transparent by design. Two tests need the
+   * answer: `HeaderRestyleTest` in this module, and `RestyleReachTest` in the example app, which is
+   * a separate Gradle module and so cannot see `internal`.
+   *
+   * Public and read-only rather than exposing [headerHolder], which would hand a test a mutable
+   * view it has no business touching.
+   */
+  @androidx.annotation.VisibleForTesting
+  fun pinnedHeaderTextColor(): Int? =
+    (headerHolder?.itemView as? android.widget.TextView)?.currentTextColor
 
   fun update(tree: FlattenedTree, enabled: Boolean) {
     this.tree = tree

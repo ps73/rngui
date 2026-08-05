@@ -16,6 +16,13 @@ const path = require('node:path')
  * and this copies them in — the same arrangement, and for the same reason, as
  * `with-tab-drawables`.
  *
+ * **The copy happens at prebuild, not at build**, which is a trap worth stating because it fails
+ * quietly. Editing anything under `apps/example/androidTest/` and going straight to Gradle compiles
+ * the *previous* copy: an edited test runs its old body, and a newly added one does not run at all
+ * and is not reported missing — the run simply passes with one fewer test than expected. Run
+ * `npm run prebuild` after touching these sources, or copy the file across by hand for a quick
+ * loop. Counting the tests in the report is the cheap way to notice.
+ *
  * **`-PrnguiInstrumentedTests` points the tests at the release variant, and both halves of that
  * matter.** A debug APK loads JavaScript from Metro, so the test would fail for want of a dev
  * server; and `expo-dev-client` puts its launcher in front of the app, so a test that did reach the
