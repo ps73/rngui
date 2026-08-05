@@ -37,7 +37,17 @@ class StickyHeaderDecoration(
   var pinnedSectionId: String? = null
     private set
 
-  private var headerHolder: RecyclerView.ViewHolder? = null
+  /**
+   * The reused header view, or null until one has been drawn.
+   *
+   * `internal` rather than private so `HeaderRestyleTest` can read the view it produces — the
+   * header is drawn into a canvas rather than added to the hierarchy, so there is no other way to
+   * ask what colour it is currently using. Same reason `SwipeActionsCallback` exposes its open
+   * state.
+   */
+  internal var headerHolder: RecyclerView.ViewHolder? = null
+    private set
+
   private var boundPosition = RecyclerView.NO_POSITION
 
   fun update(tree: FlattenedTree, enabled: Boolean) {
