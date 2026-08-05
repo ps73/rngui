@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.rngui.collectionview.generated.FontSpec
 import com.rngui.collectionview.generated.RowKind
 
 /**
@@ -123,8 +124,10 @@ class CollectionAdapter(
     when (val item = getItem(position)) {
       is Item.ChipStrip ->
         (holder as ChipHolder).strip.bind(item.rows, style, events::onRowPress)
-      is Item.Header -> (holder as LabelHolder).bind(item.title, style.headerTextColor)
-      is Item.Footer -> (holder as LabelHolder).bind(item.text, style.footerTextColor)
+      is Item.Header ->
+        (holder as LabelHolder).bind(item.title, style.headerTextColor, style.headerFont)
+      is Item.Footer ->
+        (holder as LabelHolder).bind(item.text, style.footerTextColor, style.footerFont)
       is Item.Row -> {
         if (holder is HostHolder) {
           bindHost(holder, item)
@@ -226,9 +229,15 @@ class CollectionAdapter(
   fun currentStyle(): RowStyle = style
 
   class LabelHolder(private val text: TextView) : RecyclerView.ViewHolder(text) {
-    fun bind(value: String?, color: Int) {
+    /**
+     * The font is applied here rather than at creation for the reuse rule: a recycled holder keeps
+     * the last section's typeface, and `FontResolver.apply` fully specifies face, size and axes on
+     * every pass. Passing null is a real value — it restores the 13sp default.
+     */
+    fun bind(value: String?, color: Int, font: FontSpec?) {
       text.text = value.orEmpty()
       text.setTextColor(color)
+      FontResolver.apply(text, font, SUPPLEMENTARY_SIZE_SP, text.context)
     }
   }
 
@@ -252,9 +261,12 @@ class CollectionAdapter(
      * above — because that is what makes a footer read as belonging to the group it explains
      * rather than to the one that follows.
      */
+    /** The size a header or footer takes when the spec names none. */
+    const val SUPPLEMENTARY_SIZE_SP = 13f
+
     fun supplementaryView(context: Context, isHeader: Boolean): TextView =
       TextView(context).apply {
-        textSize = 13f
+        textSize = SUPPLEMENTARY_SIZE_SP
         gravity = Gravity.BOTTOM
         setPadding(
           context.dp(GroupShape.INSET_DP + 4),
