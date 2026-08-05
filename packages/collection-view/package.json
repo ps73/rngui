@@ -1,7 +1,7 @@
 {
   "name": "@rngui/collection-view",
-  "version": "0.0.0",
-  "description": "A real iOS UICollectionView for React Native, with a Radix-style compound API.",
+  "version": "0.1.0",
+  "description": "A real UICollectionView on iOS and a real RecyclerView on Android, for React Native, with a Radix-style compound API.",
   "license": "AGPL-3.0-only",
   "author": "Phil <phil.schaffarzyk@gmail.com>",
   "homepage": "https://github.com/ps73/rngui/tree/main/packages/collection-view",
@@ -13,7 +13,10 @@
   "keywords": [
     "react-native",
     "ios",
+    "android",
     "uicollectionview",
+    "recyclerview",
+    "material3",
     "list",
     "fabric"
   ],
@@ -51,6 +54,7 @@
     "src",
     "lib",
     "ios",
+    "CHANGELOG.md",
     "android/src",
     "android/build.gradle",
     "assets/material-symbols.codepoints",

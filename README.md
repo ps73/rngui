@@ -7,7 +7,7 @@ Native UI components for React Native. Each component is a genuine platform view
 
 | Package                                                     | What it is                                                                                 |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| [`@rngui/collection-view`](packages/collection-view#readme) | A real iOS `UICollectionView`; Android `RecyclerView` + Material 3 Expressive to follow |
+| [`@rngui/collection-view`](packages/collection-view#readme) | A real `UICollectionView` on iOS, a real `RecyclerView` + Material 3 Expressive on Android |
 
 Install only what you use:
 
