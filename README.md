@@ -70,6 +70,7 @@ clipped, hit-tested and scrolled by UIKit for free.
 ```bash
 npm install                  # links every workspace
 npm run verify               # typecheck, regenerate both native models, run every unit test
+npm run verify:clean         # the same, against a fresh clone of HEAD in a temp directory
 npm run ios                  # builds and runs the example on a simulator
 npm run android              # ditto, on an emulator
 npm run lint                 # prettier --check
@@ -78,6 +79,13 @@ npm run lint                 # prettier --check
 `verify` covers the Kotlin tests too, but they need `apps/example/android` — which `expo prebuild`
 generates and git does not track — and an `ANDROID_HOME`. Without both it says so and skips them
 rather than failing, so a machine with only Node and Xcode still verifies everything else.
+
+`verify:clean` answers the question `verify` cannot: whether the commit stands up without this
+machine. It clones `HEAD` to a temp directory, `npm ci`s from the lockfile, prebuilds Android from
+nothing and runs everything there — so a dependency missing from the lockfile, or generated Kotlin
+that only compiles against a stale prebuild, fails here rather than on someone else's clone. Around
+half a minute with a warm npm cache. Only committed work is in the clone, and it warns when the
+checkout is dirty. It does not cover Linux, which is the one thing left for CI.
 
 The same checks run in CI as the [Verify workflow](.github/workflows/verify.yml), which is
 **manual only**: this repository is private, a macOS runner costs ten times a Linux one, and the
