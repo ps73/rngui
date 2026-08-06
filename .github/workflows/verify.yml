@@ -1,0 +1,97 @@
+# The repository's checks, run on demand.
+#
+# **Manual only, deliberately.** This is a private repository, so Actions minutes are metered, and
+# the expensive half of the matrix is native: the Swift contract test needs a macOS runner, which
+# GitHub bills at ten times the Linux rate, and the Kotlin tests need a full `expo prebuild` and a
+# Gradle build before a single assertion runs. Pushing every commit through that is a poor trade
+# for a repository with one maintainer who already runs `npm run verify` locally. Run this before
+# merging a branch and before cutting a release; that is what it is for.
+#
+# The three jobs are split by what they cost, not by what they cover, so the cheap one is never
+# held hostage by the slow ones — and the two native jobs can be switched off individually when a
+# change cannot possibly affect them.
+name: Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      swift:
+        description: 'Swift contract test (macOS runner — 10× minutes)'
+        type: boolean
+        default: true
+      kotlin:
+        description: 'Kotlin JVM tests (expo prebuild + Gradle — slowest job)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Everything that needs nothing but Node: formatting, types, and the three generators that must
+  # agree with their committed output. Under two minutes, and it catches most of what breaks.
+  checks:
+    name: Lint, types, codegen
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      # Each of these regenerates its artifact and fails on any diff, which is how a TypeScript
+      # spec change that was never mirrored into Swift or Kotlin gets caught. The Material Symbols
+      # step needs no font: the generator writes the Kotlin table before it ever looks for one,
+      # and skips the subsetting when the source is absent, as it is here.
+      - run: npm run verify:swift-types --workspaces --if-present
+      - run: npm run verify:kotlin-types --workspaces --if-present
+      - run: npm run verify:material-symbols --workspaces --if-present
+
+  # `Package.swift` covers the generated descriptor model and nothing else, so this is a plain
+  # `swift test` — no Xcode project, no simulator, no `pod install`. That is what keeps a macOS
+  # runner affordable enough to use at all.
+  swift:
+    name: Swift contract test
+    if: inputs.swift
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # No `npm ci`: SwiftPM builds `ios/Generated` and `ios/Tests` straight from the checkout,
+      # and installing 400 npm packages to run it would be most of the job's wall clock.
+      - run: swift test --package-path packages/collection-view
+
+  # The twelve Kotlin test files live in a library that has no standalone Gradle build, so the
+  # example app's generated Android project is the only way to reach them. `apps/example/android`
+  # is not committed, hence the prebuild.
+  kotlin:
+    name: Kotlin JVM tests
+    if: inputs.kotlin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - name: Prebuild the example app (Android only)
+        run: npm run prebuild -w @rngui/example -- --platform android
+      # `--require` turns the script's local "skip with a warning" into a hard failure. In CI a
+      # missing prebuild or a missing SDK is a broken workflow, not a developer without an Android
+      # toolchain, and a skipped test that reports green is worse than no test at all.
+      - run: npm run test:kotlin -w @rngui/collection-view -- --require

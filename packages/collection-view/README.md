@@ -129,7 +129,7 @@ the platform's own value:
 
 ```tsx
 <CollectionView.Root
-  appearance={{ tintColor: '#0FA3A3', font: { design: 'rounded' } }}
+  appearance={{ tintColor: '#0FA3A3', font: { family: 'ui-rounded' } }}
   darkAppearance={{ tintColor: '#5AC8C8' }}
 />
 ```
@@ -137,12 +137,19 @@ the platform's own value:
 Fields: `background` · `backgroundGradient` · `rowBackground` · `separator` · `labelColor` ·
 `secondaryLabelColor` · `headerTextColor` · `headerBackgroundStyle` · `footerTextColor` ·
 `tintColor` · `sectionSpacing` · `font` · `headerFont` · `footerFont`. A `FontSpec` is
-`{ family, design, size, weight, variations, scaled }`, where `design` is
-`default | rounded | serif | monospaced` — the `ui-rounded` family and friends.
+`{ family, size, weight, variations, scaled }`.
 
-`family` is a font your app registered — with `expo-font`, the face is handed to Core Text and
-resolved here by name, so no per-row styling is involved. Naming one makes `design` moot: a system
-design is a property of the _system_ font, and there is nothing for it to apply to.
+**`family` takes the same names React Native's `<Text>` takes.** Five of them are generic —
+`system-ui`, `ui-sans-serif`, `ui-serif`, `ui-rounded`, `ui-monospace` — and they are CSS's names,
+which React Native's iOS text layer already maps onto `UIFontDescriptor.SystemDesign`. Using the
+same spelling means one vocabulary on a screen that mixes rows and `<Text>`, instead of two names
+for SF Rounded depending on which component is asking. On Android they resolve to the matching
+system face, with `ui-rounded` degrading to the default one because Android has none.
+
+Anything else is a font your app registered — with `expo-font`, the face is handed to Core Text and
+resolved here by name, so no per-row styling is involved. Leaving `family` unset is different again:
+it keeps whatever face the slot normally uses, which is how `font: { size: 20 }` on a section header
+stays a header rather than collapsing to a plain system label.
 
 `variations` drives a variable font's axes, written flat: `'wght=550,opsz=20'`. This is the only
 way to reach a weight that is not one of the nine `weight` names, because those nine are the only

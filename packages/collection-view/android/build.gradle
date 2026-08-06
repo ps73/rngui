@@ -13,9 +13,12 @@
  * `apps/example/android/gradlew :rngui_collection-view:test` — the JVM tests below cannot be
  * reached any other way, because there is no standalone build to reach them from. It needs
  * `npm run prebuild` to have generated `apps/example/android` first, and `ANDROID_HOME` set.
- * `npm run verify` deliberately does *not* call it: everything else in `verify` needs only Node
- * and Xcode, and requiring an Android SDK and a prebuild to check a type contract would be a poor
- * trade.
+ *
+ * `npm run verify` **does** call it, through `scripts/run-kotlin-tests.mjs`, which skips with a
+ * warning when either prerequisite is missing rather than failing. That keeps the original
+ * objection answered — `verify` on a machine with only Node and Xcode still works — without
+ * leaving twelve test files that run only when someone remembers them. CI passes `--require` to
+ * the same script, so the one run that gates a release cannot silently skip them.
  *
  * The Compose compiler plugin is the **one** exception, and it is here under protest — and it is
  * now declared only in a checkout that has tests to compile.

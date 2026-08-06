@@ -29,7 +29,7 @@ within them is listed honestly rather than rounded up.
 | M9 Chips + swipe actions          | Done                                                           |
 | M10 Insets, keyboard, scroll      | Done                                                           |
 | M11 Bottom sheet                  | Done. Scrolls, hands the drag back, zero direction reversals   |
-| M12 Example parity, docs, release | Done, except the four-device matrix                            |
+| M12 Example parity, docs, release | Done. Device matrix: three rows of four, and why the fourth    |
 | Post-plan                         | M3 Expressive pass, 16 reported defects, Slider, Pixel screens |
 
 **M11 took two bugs in the same seam.** RNGH's `NativeViewGestureHandler` decides whether to
@@ -47,11 +47,38 @@ checking its class — on iOS the equivalent is one hard `isKindOfClass:` with n
 The jank-frame instrument the plan proposed as a replacement for the iOS reversal counter is not
 built: the counter itself reads clean here, so there is no judder to measure.
 
-**Not done in M12:** the device matrix (one API 24 device, one API 31, one current, one low-RAM).
-Only a single emulator was available, so "it works on a Pixel 10 emulator" is the whole of the
-claim. This is now the only thing on the plan that has not been done.
+**The device matrix, and what an emulator will and will not give you.** The plan asked for four
+devices: the API 24 floor, an API 31 (blur, stretch), a current one, and a low-RAM one. Three of
+the four are now covered, all against the **release** APK — minified, JS bundled, no Metro —
+because that is the artifact a consumer ships rather than the one a developer runs.
 
-The Settings and Contacts screens **were** the other one, and are no longer: Settings is a Pixel
+| Row     | Covered by                                                   | Result                                                                                                                          |
+| ------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Current | Pixel 10 emulator, API 37                                    | The whole of the work above                                                                                                     |
+| API 31  | Pixel 4 AVD, `google_apis;arm64-v8a`                         | All five screens render. 2,000 Contacts rows scrolled: no logcat error, 774 views alive, 185 MB PSS                             |
+| Low-RAM | The same AVD, constrained (below)                            | Host windowing held 16 of 200 subtrees at rows 165–172; views flat at 1,384; 215 MB PSS; 0 janky frames; no `lmkd` kill, no OOM |
+| API 24  | **Not run.** Lint's `NewApi` pass over the library stands in | 0 errors, 20 warnings, none of them API-level                                                                                   |
+
+**A low-RAM AVD is not a thing you can ask for.** The emulator silently raises RAM to whatever its
+system image demands — the API 37.1 image clamps to 4 GB and API 31 to 2 GB, so `-memory 1024` and
+`hw.ramSize=1024` both come back as a log line saying it was ignored. What does work is taking the
+2 GB floor and then constraining what actually kills apps on cheap hardware: `adb root`, then
+`setprop ro.config.low_ram true` and `setprop dalvik.vm.heapgrowthlimit 96m`, then `stop; start` so
+the framework reads them. That is a real low-RAM framework and a real 96 MB heap ceiling; it is not
+a real slow CPU or a real slow flash, and the numbers above should be read with that in mind. One
+gotcha: while `adb root` is in effect, `adb shell input` loses `INJECT_EVENTS` and every gesture
+fails with a `SecurityException` — `adb unroot` after setting the props, the props survive.
+
+**Lint is the honest half of the API 24 row.** `:rngui_collection-view:lintRelease` at `minSdk 24`
+reports 0 errors and no `NewApi`, `InlinedApi` or `ObsoleteSdkInt` findings, which settles the
+question the floor row exists to ask — whether anything calls an API it is not allowed to. What it
+cannot settle is behaviour: the font-variation fallback below 26, the opaque header below 31, glow
+rather than stretch overscroll. Those still need a device or an x86 image under emulation.
+
+Frame timings from an emulator are not device timings and are recorded here as what they are.
+
+The API 24 row is now the only thing on the plan that has not been done. The Settings and Contacts
+screens **were** the other one, and are no longer: Settings is a Pixel
 Settings rebuild — two-line rows with a summary under each, bare monochrome glyphs, no chevrons,
 toolbar search — and Contacts is Google Contacts, with monogram avatars over the same 2,000-row
 harness and no swipe-to-delete, because Material assigns that gesture to dismiss. Both platforms

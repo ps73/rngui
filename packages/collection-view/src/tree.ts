@@ -404,21 +404,37 @@ export interface SectionSpec {
 // ---------------------------------------------------------------------------
 
 /**
- * The system typefaces, matching CSS's `ui-*` generic families and
- * `UIFontDescriptor.SystemDesign`. `rounded` is SF Rounded.
+ * A face to render with: one of the five generic families, or a font the app registered.
+ *
+ * The generic names are CSS's, and React Native already resolves them in `<Text>` — its iOS text
+ * layer maps exactly these five onto `UIFontDescriptor.SystemDesign`. Using the same spelling
+ * means one vocabulary across a screen that mixes rows and `<Text>`, rather than two names for
+ * SF Rounded depending on which component is asking.
+ *
+ * `ui-rounded` has no counterpart in Android's system faces and degrades to the default one;
+ * see the platform table in the README.
+ *
+ * Anything else is looked up as an app-bundled face — whatever name it is registered under,
+ * which for `expo-font` is the key passed to `useFonts`. The `(string & {})` is what keeps the
+ * five above in autocomplete without closing the type to them.
  */
-export type FontDesign = 'default' | 'rounded' | 'serif' | 'monospaced'
+export type FontFamily =
+  | 'system-ui'
+  | 'ui-sans-serif'
+  | 'ui-serif'
+  | 'ui-rounded'
+  | 'ui-monospace'
+  | (string & {})
 
 /**
  * Font selection. Set on the root as the default, or per slot to override.
  *
- * `family` names an app-bundled face — whatever name it is registered under, which for
- * `expo-font` is the key passed to `useFonts`. Leave it unset to stay on the system font and
- * pick a `design` instead.
+ * Leave `family` unset to keep whatever face the slot normally uses — which is not the same as
+ * asking for `system-ui`, because a section header is heavier than a row label and only the
+ * former keeps that.
  */
 export interface FontSpec {
-  family?: string
-  design?: FontDesign
+  family?: FontFamily
   /** Points. Omit to take the size of the text style the slot normally uses. */
   size?: number
   /** `'regular' | 'medium' | 'semibold' | 'bold' | …`, or `'100'`–`'900'`. */

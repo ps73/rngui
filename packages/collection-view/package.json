@@ -1,7 +1,7 @@
 {
   "name": "@rngui/collection-view",
-  "version": "0.0.0",
-  "description": "A real iOS UICollectionView for React Native, with a Radix-style compound API.",
+  "version": "0.1.0",
+  "description": "A real UICollectionView on iOS and a real RecyclerView on Android, for React Native, with a Radix-style compound API.",
   "license": "AGPL-3.0-only",
   "author": "Phil <phil.schaffarzyk@gmail.com>",
   "homepage": "https://github.com/ps73/rngui/tree/main/packages/collection-view",
@@ -13,7 +13,10 @@
   "keywords": [
     "react-native",
     "ios",
+    "android",
     "uicollectionview",
+    "recyclerview",
+    "material3",
     "list",
     "fabric"
   ],
@@ -51,6 +54,7 @@
     "src",
     "lib",
     "ios",
+    "CHANGELOG.md",
     "android/src",
     "android/build.gradle",
     "assets/material-symbols.codepoints",
@@ -69,7 +73,7 @@
     "gen:swift-types": "node scripts/gen-swift-types.mjs",
     "gen:kotlin-types": "node scripts/gen-kotlin-types.mjs",
     "test": "swift test",
-    "test:kotlin": "cd ../../apps/example/android && ./gradlew :rngui_collection-view:test",
+    "test:kotlin": "node scripts/run-kotlin-tests.mjs",
     "verify:swift-types": "node scripts/gen-swift-types.mjs && git diff --exit-code -- ios/Generated ios/Tests",
     "verify:kotlin-types": "node scripts/gen-kotlin-types.mjs && git diff --exit-code -- android/src/main/java/com/rngui/collectionview/generated android/src/test",
     "gen:material-symbols": "node scripts/gen-material-symbols.mjs",

@@ -56,10 +56,46 @@ export function readTreeSchema({ sourcePath, tool, mapType }) {
   // Enums first: a struct property can reference one, and the shape reader needs it registered.
   const enums = new Map() // name -> string[] of raw values
 
+  /**
+   * Unions of string literals **widened with `(string & {})`** — a plain string on the wire, and
+   * a list of suggestions in the editor.
+   *
+   * `FontFamily` is the case this exists for. Its five reserved names (`ui-rounded` and friends)
+   * are worth autocompleting, but the sixth value is "whatever face the app registered", so it
+   * cannot be an enum in Swift or Kotlin without making every app font unrepresentable. The
+   * widener is what tells TypeScript to keep offering the five without closing the type — and
+   * what tells this reader that the answer over the boundary is `String`.
+   *
+   * Deliberately not a general escape hatch: a union with any *other* non-literal member still
+   * throws below, because that is a type neither generator can spell.
+   */
+  const widenedStrings = new Set()
+
+  /**
+   * `string`, or the `(string & {})` idiom that widens a literal union without collapsing it.
+   *
+   * The parentheses are load-bearing in the source — `&` binds tighter than `|`, but writing it
+   * unparenthesised is unreadable — so they are here too, as a `ParenthesizedTypeNode` wrapping
+   * the intersection.
+   */
+  const isStringWidener = (node) => {
+    const inner = ts.isParenthesizedTypeNode(node) ? node.type : node
+    return (
+      inner.kind === ts.SyntaxKind.StringKeyword ||
+      (ts.isIntersectionTypeNode(inner) &&
+        inner.types.some((part) => part.kind === ts.SyntaxKind.StringKeyword))
+    )
+  }
+
   for (const statement of source.statements) {
     if (!ts.isTypeAliasDeclaration(statement)) continue
     const { type } = statement
     if (!ts.isUnionTypeNode(type)) continue
+
+    if (type.types.some(isStringWidener)) {
+      widenedStrings.add(statement.name.text)
+      continue
+    }
 
     const values = type.types.map((member) => {
       if (ts.isLiteralTypeNode(member) && ts.isStringLiteral(member.literal)) {
@@ -89,6 +125,7 @@ export function readTreeSchema({ sourcePath, tool, mapType }) {
       // The integer marker. As a resolved type this is `number`; as syntax it is a name.
       if (name === 'IntValue') return { shape: 'int' }
       if (enums.has(name)) return { shape: 'enum', name }
+      if (widenedStrings.has(name)) return { shape: 'string' }
       return { shape: 'struct', name }
     }
     throw unsupportedType(node, context)

@@ -159,21 +159,6 @@ enum SwipeActionStyle: String, Decodable {
   }
 }
 
-/// Generated from `FontDesign` in tree.ts.
-enum FontDesign: String, Decodable {
-  case `default`
-  case rounded
-  case serif
-  case monospaced
-  /// A value this binary does not recognise.
-  case unknown
-
-  init(from decoder: any Decoder) throws {
-    let raw = try decoder.singleValueContainer().decode(String.self)
-    self = FontDesign(rawValue: raw) ?? .unknown
-  }
-}
-
 /// Generated from `HeaderBackgroundStyle` in tree.ts.
 enum HeaderBackgroundStyle: String, Decodable {
   case opaque
@@ -571,12 +556,11 @@ struct SectionSpec: Decodable, Equatable {
 
 /// Font selection. Set on the root as the default, or per slot to override.
 ///
-/// `family` names an app-bundled face — whatever name it is registered under, which for
-/// `expo-font` is the key passed to `useFonts`. Leave it unset to stay on the system font and
-/// pick a `design` instead.
+/// Leave `family` unset to keep whatever face the slot normally uses — which is not the same as
+/// asking for `system-ui`, because a section header is heavier than a row label and only the
+/// former keeps that.
 struct FontSpec: Decodable, Equatable {
   var family: String?
-  var design: FontDesign?
   /// Points. Omit to take the size of the text style the slot normally uses.
   var size: Double?
   /// `'regular' | 'medium' | 'semibold' | 'bold' | …`, or `'100'`–`'900'`.
@@ -591,7 +575,7 @@ struct FontSpec: Decodable, Equatable {
   var scaled: Bool?
 
   private enum CodingKeys: String, CodingKey {
-    case family, design, size, weight, variations, scaled
+    case family, size, weight, variations, scaled
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -600,7 +584,6 @@ struct FontSpec: Decodable, Equatable {
   init(from decoder: any Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     family = try container.decodeIfPresent(String.self, forKey: .family)
-    design = try container.decodeIfPresent(FontDesign.self, forKey: .design)
     size = try container.decodeIfPresent(Double.self, forKey: .size)
     weight = try container.decodeIfPresent(String.self, forKey: .weight)
     variations = try container.decodeIfPresent(String.self, forKey: .variations)
