@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { RefreshControl } from 'react-native'
 import { CollectionView, type VisibleRange } from '@rngui/collection-view'
 import { buildContacts } from '../data/contacts'
 
@@ -63,9 +64,39 @@ export default function ContactsScreenIOS() {
 
   const visibleRange = useRef<VisibleRange>({ firstIndex: -1, lastIndex: -1 })
 
+  /**
+   * Pull to refresh, and the point of it here is the *controlled* half.
+   *
+   * `refreshing` is state, not something native owns: the spinner stays up for exactly as long as
+   * this says so, and a caller who never set it would see it stop on the next render. The timer
+   * stands in for a fetch — without one the round trip is too fast to see whether the contract
+   * holds at all.
+   */
+  const [refreshing, setRefreshing] = useState(false)
+  const onRefresh = useCallback(() => {
+    setRefreshing(true)
+    setTimeout(() => {
+      // Deleting is the only thing this screen changes, so undeleting is the only honest thing a
+      // refresh can restore.
+      setDeleted(new Set())
+      setRefreshing(false)
+    }, 1200)
+  }, [])
+
   return (
     <CollectionView.Root
       listAppearance="plain"
+      // The element `ScrollView` takes, read rather than mounted — `tintColor` and `title` are the
+      // iOS half of `RefreshControl`, and this is where they are exercised.
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={AVATAR_COLOR}
+          title="Updating contacts…"
+          titleColor={AVATAR_COLOR}
+        />
+      }
       // 13pt matches the system control's compact metric; the block is centred rather than
       // stretched, which is what keeps it reading as one object on a tall screen.
       sectionIndex={{ rowHeight: 13 }}

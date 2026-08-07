@@ -84,6 +84,9 @@ public final class RNGUICollectionViewHost: NSObject {
     ((CGPoint, CGSize, CGSize, UIEdgeInsets) -> Void)?
   @objc public var onContentSizeChange: ((CGSize) -> Void)?
 
+  /// The pull. No payload, as `RefreshControl` has it.
+  @objc public var onRefresh: (() -> Void)?
+
   // MARK: Insets and keyboard
 
   /// What the caller asked for, kept apart from what is currently applied. The keyboard path needs
@@ -120,6 +123,21 @@ public final class RNGUICollectionViewHost: NSObject {
   private var tracksVisibleRange = false
   private var visibleRangeEmitScheduled = false
   private var lastEmittedRange: (first: Int, last: Int)?
+
+  // MARK: Pull to refresh
+
+  /**
+   * Built once and kept, but **not** handed to the collection view until asked for.
+   *
+   * Assigning `collectionView.refreshControl` is what turns the pull gesture on, so a list with no
+   * `refreshControl` prop must never see the assignment — otherwise every list in the library
+   * would suddenly rubber-band into a spinner.
+   */
+  private let refreshControl = UIRefreshControl()
+  private var refreshEnabled = false
+  /// What JavaScript last asked for, kept apart from what the control is actually doing. The two
+  /// disagree for exactly as long as it takes a deferred `beginRefreshing` to land.
+  private var desiredRefreshing = false
 
   private var tracksScroll = false
   /// Retained for as long as the host lives; releasing it is what unregisters the observer.
@@ -273,8 +291,27 @@ public final class RNGUICollectionViewHost: NSObject {
       self?.scrollToSection(section)
     }
 
+    // Not `collectionView.refreshControl = refreshControl` — see the property's own note. Only the
+    // target is wired here; the control is attached when a caller asks for one.
+    refreshControl.addTarget(
+      self,
+      action: #selector(refreshControlValueChanged),
+      for: .valueChanged
+    )
+
     container.onMovedToWindow = { [weak self] in
       self?.adoptAsContentScrollView()
+    }
+
+    // Retries a `beginRefreshing()` that UIKit dropped because the control had not been laid out
+    // yet. Everything here is a field read except in the one frame where it actually starts.
+    container.onDidLayout = { [weak self] in
+      guard let self,
+        self.refreshEnabled,
+        self.desiredRefreshing,
+        !self.refreshControl.isRefreshing
+      else { return }
+      self.beginRefreshingProgrammatically()
     }
 
     // Only fonts and spacing need this; colours are dynamic `UIColor`s that UIKit re-resolves on
@@ -1746,6 +1783,124 @@ public final class RNGUICollectionViewHost: NSObject {
     if tracks { contentSizeDidChange(collectionView.contentSize) }
   }
 
+  // MARK: - Pull to refresh
+
+  /// Attaching the control is what enables the gesture, so this is the on switch rather than a
+  /// flag the control consults.
+  @objc public func setRefreshEnabled(_ enabled: Bool) {
+    guard refreshEnabled != enabled else { return }
+    refreshEnabled = enabled
+    if enabled {
+      collectionView.refreshControl = refreshControl
+      if desiredRefreshing { beginRefreshingProgrammatically() }
+    } else {
+      refreshControl.endRefreshing()
+      collectionView.refreshControl = nil
+    }
+  }
+
+  /**
+   * Reached by the `refreshing` prop *and* by the `setNativeRefreshing` command.
+   *
+   * **The guard reads the control's own state, never a stored copy of the prop, and that is the
+   * load-bearing detail.** After a user pull the control is spinning while the prop is still
+   * `false`, so the command sends `false` — a prop-value guard would see no change, swallow the
+   * correction, and leave the spinner up forever. Which is the exact bug the command exists to
+   * fix.
+   */
+  @objc public func setRefreshing(_ refreshing: Bool) {
+    desiredRefreshing = refreshing
+    guard refreshControl.isRefreshing != refreshing else { return }
+    if refreshing {
+      beginRefreshingProgrammatically()
+    } else {
+      refreshControl.endRefreshing()
+    }
+  }
+
+  @objc public func setRefreshTintColor(_ color: UIColor?) {
+    refreshControl.tintColor = color
+  }
+
+  /// Both halves in one call, so a colour change with an unchanged title still repaints.
+  @objc public func setRefreshTitle(_ title: String?, color: UIColor?) {
+    guard let title, !title.isEmpty else {
+      refreshControl.attributedTitle = nil
+      return
+    }
+    var attributes: [NSAttributedString.Key: Any] = [:]
+    if let color { attributes[.foregroundColor] = color }
+    refreshControl.attributedTitle = NSAttributedString(
+      string: title,
+      attributes: attributes
+    )
+  }
+
+  /**
+   * Moves what the control *draws* without moving the frame UIKit owns.
+   *
+   * `bounds.origin.y`, not `frame`. `scrollView.refreshControl` positions the control itself
+   * against `adjustedContentInset`, and overwriting the frame fights that — the legacy
+   * `RCTRefreshControl` has a long note about exactly this. Shifting the bounds slides the
+   * content inside an unchanged frame instead.
+   *
+   * Normally `0` is what you want here: `contentInsetAdjustmentBehavior` has already put the
+   * control below the navigation bar. The prop exists for parity, and for an overlay header UIKit
+   * knows nothing about.
+   */
+  @objc public func setRefreshProgressViewOffset(_ offset: CGFloat) {
+    refreshControl.bounds = CGRect(
+      x: refreshControl.bounds.origin.x,
+      y: -offset,
+      width: refreshControl.bounds.width,
+      height: refreshControl.bounds.height
+    )
+  }
+
+  /**
+   * Starts the spinner and scrolls it into view, which are two separate things.
+   *
+   * `beginRefreshing()` does not move the content offset — UIKit parks the control above the top
+   * of the content, so at rest it spins off-screen and the list looks frozen. Hence the nudge.
+   *
+   * Three guards, each earning its place:
+   *
+   * - **Not before the control is in a window.** `beginRefreshing()` is silently dropped until
+   *   then, which is why `ContainerView.onDidLayout` retries. `sizeToFit()` for the same family of
+   *   reason: the frame is zero-height until it is asked, and a nudge of zero moves nothing.
+   * - **Only from the top.** React Native nudges unconditionally, which yanks a list the user had
+   *   scrolled 500pt down. Here a refresh started from further in simply spins where the control
+   *   already is, and comes into view if the user scrolls up — which is what a `UIRefreshControl`
+   *   does for every refresh it was not the cause of.
+   * - **Not while scrolling is off.** That is a bottom sheet holding the list at a fixed offset,
+   *   and moving it would fight the sheet's per-frame correction for as long as the drag lasts.
+   */
+  private func beginRefreshingProgrammatically() {
+    guard refreshEnabled, !refreshControl.isRefreshing, collectionView.window != nil else {
+      return
+    }
+    refreshControl.sizeToFit()
+    refreshControl.beginRefreshing()
+
+    let top = -collectionView.adjustedContentInset.top
+    guard collectionView.isScrollEnabled, collectionView.contentOffset.y <= top else { return }
+    collectionView.setContentOffset(
+      CGPoint(x: collectionView.contentOffset.x, y: top - refreshControl.frame.height),
+      animated: true
+    )
+  }
+
+  /**
+   * No suppression flag, and that is deliberate rather than an omission.
+   *
+   * `UIRefreshControl` sends `.valueChanged` only for the user's pull; `beginRefreshing()` and
+   * `endRefreshing()` send no control events at all. Both of React Native's implementations rely
+   * on this and guard nothing. A flag here would be inventing a bug in order to fix it.
+   */
+  @objc private func refreshControlValueChanged() {
+    onRefresh?()
+  }
+
   /**
    * The `scrollTo` command, clamped the way `RCTScrollViewComponentView` clamps it.
    *
@@ -2293,6 +2448,20 @@ extension RNGUICollectionViewHost: UICollectionViewDelegate {
 final class ContainerView: UIView {
   var onMovedToWindow: (() -> Void)?
   var onInterfaceStyleChange: (() -> Void)?
+  /**
+   * Every layout pass, because `UIRefreshControl` needs one before it will start.
+   *
+   * `beginRefreshing()` is *silently ignored* until the control has been laid out at least once,
+   * which makes `refreshControl={<RefreshControl refreshing />}` on first mount do nothing at all.
+   * React Native carries the same workaround in both of its implementations. Three field reads per
+   * pass, and only while a refresh is actually pending.
+   */
+  var onDidLayout: (() -> Void)?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onDidLayout?()
+  }
 
   override func didMoveToWindow() {
     super.didMoveToWindow()

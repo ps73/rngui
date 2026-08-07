@@ -1,4 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
+import { RefreshControl } from 'react-native'
 import { CollectionView, type VisibleRange } from '@rngui/collection-view'
 import { buildContacts } from '../data/contacts'
 
@@ -90,10 +91,37 @@ export default function ContactsScreenAndroid() {
 
   const visibleRange = useRef<VisibleRange>({ firstIndex: -1, lastIndex: -1 })
 
+  /**
+   * Pull to refresh, and this is the screen where the Android half of `RefreshControl` is real.
+   *
+   * `colors` is a *list* because Material's indicator cycles through them while it spins — iOS's
+   * control has one colour and ignores this. The timer stands in for a fetch; `refreshing` is
+   * controlled, so the spinner lasts exactly as long as this state says and no longer.
+   *
+   * Worth watching where it comes to rest: this list runs edge-to-edge under the toolbar, so the
+   * indicator is positioned against the resolved content inset rather than the top of the window.
+   * Without that it would settle underneath the status bar.
+   */
+  const [refreshing, setRefreshing] = useState(false)
+  const onRefresh = useCallback(() => {
+    setRefreshing(true)
+    setTimeout(() => {
+      setDeleted(new Set())
+      setRefreshing(false)
+    }, 1200)
+  }, [])
+
   return (
     <CollectionView.Root
       listAppearance="plain"
       sectionIndex
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[AVATAR_COLORS[3], AVATAR_COLORS[4], AVATAR_COLORS[5]]}
+        />
+      }
       // Off because the fast-scroll thumb already owns this edge, and two rails on the same strip
       // read as a mistake on either platform.
       showsVerticalScrollIndicator={false}

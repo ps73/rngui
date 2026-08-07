@@ -1,5 +1,6 @@
 package com.rngui.collectionview
 
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.common.MapBuilder
 import com.facebook.react.module.annotations.ReactModule
 import android.view.View
@@ -134,6 +135,7 @@ class RNGUICollectionViewManager :
       RowValueEvent.SLIDER to MapBuilder.of("registrationName", "onSliderChange"),
       RowValueEvent.SLIDER_COMMIT to MapBuilder.of("registrationName", "onSliderCommit"),
       VisibleRangeChangeEvent.NAME to MapBuilder.of("registrationName", "onVisibleRangeChange"),
+      RefreshEvent.NAME to MapBuilder.of("registrationName", "onRefresh"),
     )
 
   override fun setShowsSectionIndex(
@@ -290,6 +292,93 @@ class RNGUICollectionViewManager :
     view.tracksVisibleRange = value
   }
 
+  // ---------------------------------------------------------------------------------------------
+  // Pull to refresh
+  //
+  // Two of these are stashed rather than applied, for the same reason `tree` and `revision` are —
+  // see `commitProps`. The rest are order-independent.
+  // ---------------------------------------------------------------------------------------------
+
+  override fun setRefreshEnabled(
+    view: RNGUICollectionViewView,
+    value: Boolean,
+  ) {
+    view.pendingRefreshEnabled = value
+  }
+
+  override fun setRefreshing(
+    view: RNGUICollectionViewView,
+    value: Boolean,
+  ) {
+    view.pendingRefreshing = value
+  }
+
+  override fun setRefreshProgressViewOffset(
+    view: RNGUICollectionViewView,
+    value: Float,
+  ) {
+    view.setRefreshProgressViewOffset(value)
+  }
+
+  /**
+   * A **documented no-op on Android**, and the one that most looks like an oversight.
+   *
+   * `tintColor` is `RefreshControl`'s iOS-only prop, and `SwipeRefreshLayout`'s equivalent is
+   * `colors` — which is a *list*, because Material's indicator cycles through them. Rather than
+   * quietly promoting one to the other, an unset `colors` resolves through the list's own
+   * `appearance.tintColor` instead, which is the value a themed screen already set and the one it
+   * would have wanted. See `applyRefreshColors`.
+   */
+  override fun setRefreshTintColor(
+    view: RNGUICollectionViewView,
+    value: Int?,
+  ) = Unit
+
+  /**
+   * A **documented no-op on Android**. Material's indicator is a bare circle with no room for a
+   * caption, and there is no M3 affordance that adds one.
+   */
+  override fun setRefreshTitle(
+    view: RNGUICollectionViewView,
+    value: String?,
+  ) = Unit
+
+  /** A **documented no-op on Android**, for the same reason as `refreshTitle`. */
+  override fun setRefreshTitleColor(
+    view: RNGUICollectionViewView,
+    value: Int?,
+  ) = Unit
+
+  /**
+   * The colours arrive pre-processed: codegen emits `processColorArray` into the view config, so
+   * every element is already an integer by the time it reaches here.
+   */
+  override fun setRefreshColors(
+    view: RNGUICollectionViewView,
+    value: ReadableArray?,
+  ) {
+    if (value == null || value.size() == 0) {
+      view.setRefreshColors(null)
+      return
+    }
+    val colors = IntArray(value.size()) { value.getInt(it) ?: 0 }
+    view.setRefreshColors(colors)
+  }
+
+  override fun setRefreshProgressBackgroundColor(
+    view: RNGUICollectionViewView,
+    value: Int?,
+  ) {
+    view.setRefreshProgressBackgroundColor(value)
+  }
+
+  override fun setRefreshSize(
+    view: RNGUICollectionViewView,
+    value: String?,
+  ) {
+    view.setRefreshSize(value == "large")
+  }
+
   /**
    * A command rather than a prop, because the caller is reanimated rather than React.
    *
@@ -303,6 +392,22 @@ class RNGUICollectionViewManager :
     animated: Boolean,
   ) {
     view.scrollTo(y, animated)
+  }
+
+  /**
+   * A command rather than a prop, because the case it corrects is the one where *no prop changed*.
+   *
+   * A pull starts the spinner natively while JavaScript's `refreshing` is still `false`. A caller
+   * who does nothing in `onRefresh` therefore produces no prop update at all, so
+   * `onAfterUpdateTransaction` never runs and the spinner would never stop. `Root` notices the
+   * disagreement after its own render and sends this. Same name, same reason, as React Native's
+   * own `RefreshControl`.
+   */
+  override fun setNativeRefreshing(
+    view: RNGUICollectionViewView,
+    refreshing: Boolean,
+  ) {
+    view.setNativeRefreshing(refreshing)
   }
 
   companion object {

@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+**Pull to refresh.** `Root` takes `refreshControl`, spelled the way `ScrollView` spells it — a
+`RefreshControl` element — plus `refreshing` / `onRefresh` directly, which is `FlatList`'s
+shorthand. It drives a real `UIRefreshControl` on iOS and a real `SwipeRefreshLayout` on Android.
+
+The element is **read rather than mounted**: its props are unpacked onto the native view. The React
+children of this component are exactly the `Host` subtrees and are addressed positionally, so one
+extra mounted child would shift every hosted row — and on Android React Native's own control is a
+wrapper around the scrollable, which could never have been a child of it.
+
+`refreshing` is controlled, as React Native documents it. Holding that up needs more than a prop:
+a pull starts the spinner natively while JavaScript still says `false`, so `Root` detects the
+disagreement after its own render and corrects it with a native command.
+
+Two small divergences, both additive: `enabled` works on iOS as well as Android, and an Android
+indicator with no `colors` resolves through the list's own `appearance.tintColor` rather than
+staying the stock blue. `refreshControl` is deliberately **not** forwarded by
+`BottomSheetCollectionView` — inside a sheet the pull and the sheet's collapse are the same
+gesture. All of it is in the README under `Root` and _Platform differences_.
+
 ## 0.1.0
 
 The first published release. Both backends are real platform views: a `UICollectionView` on iOS

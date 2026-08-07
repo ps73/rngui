@@ -2,14 +2,17 @@ package com.rngui.collectionview
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.Rect
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import kotlin.math.abs
 import android.widget.FrameLayout
 import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.uimanager.PixelUtil
 import com.facebook.react.uimanager.ThemedReactContext
@@ -46,6 +49,22 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       (itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
     }
 
+  /**
+   * Pull-to-refresh, wrapped around [list] rather than beside it.
+   *
+   * `SwipeRefreshLayout` is a container by design — it measures one child to fill itself and asks
+   * that child whether it can still scroll up. So the `RecyclerView` moves one level down and
+   * everything else in this file keeps addressing `list` directly, which is what keeps
+   * [InsetController], [ScrollReporter], the decorations and `ItemTouchHelper` untouched by this.
+   *
+   * Present on every list and disabled until a `refreshControl` arrives. See [PullToRefreshLayout]
+   * for why it is not created lazily.
+   */
+  private val refresh = PullToRefreshLayout(context)
+
+  /** What the caller asked for, kept apart from what is currently applied — see [applyRefreshEnabled]. */
+  private var refreshWanted = false
+
   // Explicit types, and `scroll` before `insets`. The two hold lambdas that reach for each other,
   // which Kotlin cannot infer through ("Type checking has run into a recursive problem") — and
   // declaring the one whose lambda fires *first* second is what keeps the cycle safe at runtime as
@@ -71,6 +90,10 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
       list = list,
       onInsetsChanged = {
         scroll.reportContentSizeIfChanged()
+        // The indicator rests relative to where the content starts, not to where the window does.
+        // Driven from here rather than only from the prop setter so a rotation, a keyboard or a
+        // re-attach re-resolves it — the same self-healing shape as the content-size report above.
+        refresh.topInsetPx = insets.resolvedTop
         // Gated on the *keyboard* having moved, not on any inset having been applied: a system bar
         // change or a re-attach would otherwise yank a list the user had scrolled away from back to
         // whatever field still holds focus.
@@ -253,7 +276,20 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   init {
     addView(parking, LayoutParams(0, 0))
-    addView(list, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    // The list goes in through the refresh wrapper rather than straight in here. Child order is
+    // unchanged from this view's point of view — parking, scroller, scrubber — so everything that
+    // depended on it still holds.
+    refresh.addView(
+      list,
+      ViewGroup.LayoutParams(
+        ViewGroup.LayoutParams.MATCH_PARENT,
+        ViewGroup.LayoutParams.MATCH_PARENT,
+      ),
+    )
+    refresh.isEnabled = false
+    refresh.setOnRefreshListener { dispatch(RefreshEvent(surfaceId(), id)) }
+    applyRefreshColors()
+    addView(refresh, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     // Above the list, so the thumb draws over the rows and receives touches before they do.
     addView(sectionIndex, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     list.adapter = adapter
@@ -324,10 +360,104 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
 
   fun setScrollEnabled(value: Boolean) {
     layout.scrollEnabled = value
+    applyRefreshEnabled()
   }
 
   fun setDecelerationRate(value: Float) {
     list.decelerationRate = value
+  }
+
+  // -- pull to refresh ---------------------------------------------------------------------------
+  //
+  // `refreshEnabled` and `refreshing` are stashed and applied together from `commitProps`, for the
+  // same reason `tree` and `revision` are: Fabric writes props one setter at a time in no
+  // guaranteed order, and acting immediately would mean a spinner started on a control that has
+  // not been enabled yet — or cleared by a `refreshEnabled` that arrives first and is about to be
+  // contradicted. Everything else here is order-independent and applies straight away.
+
+  /**
+   * A locked list must not be pullable either, and `SwipeRefreshLayout` cannot work that out.
+   *
+   * It asks `canChildScrollUp()`, which answers "no" at the top of the content whether the list is
+   * locked or merely at rest — the two look identical from there. `@gorhom/bottom-sheet` sets
+   * `scrollEnabled = false` for as long as it owns the drag, and a pull starting in the middle of
+   * that would put a spinner on top of the sheet the finger is moving.
+   *
+   * Deliberately does **not** touch `isRefreshing`: the lock comes and goes on every frame of a
+   * sheet drag, and clearing a programmatic refresh with it would kill a spinner the caller is
+   * still driving.
+   */
+  private fun applyRefreshEnabled() {
+    refresh.isEnabled = refreshWanted && layout.scrollEnabled
+  }
+
+  /**
+   * The `setNativeRefreshing` command, which exists because the prop structurally cannot do this.
+   *
+   * A pull starts the spinner natively while JavaScript's `refreshing` is still `false`, so a
+   * caller who does nothing in `onRefresh` changes no prop and `commitProps` never runs. The guard
+   * reads the layout's own state rather than a stored copy of the prop — a prop-value guard would
+   * swallow exactly the correction this exists to deliver.
+   *
+   * No echo suppression, and that is worth saying rather than leaving it looking forgotten:
+   * `SwipeRefreshLayout.setRefreshing` takes the programmatic path with `mNotify = false`, so the
+   * listener fires only for a real gesture. React Native's own manager relies on the same thing.
+   */
+  fun setNativeRefreshing(value: Boolean) {
+    pendingRefreshing = value
+    if (refresh.isRefreshing != value) refresh.isRefreshing = value
+  }
+
+  var pendingRefreshEnabled: Boolean = false
+  var pendingRefreshing: Boolean = false
+
+  private fun applyRefreshState() {
+    refreshWanted = pendingRefreshEnabled
+    applyRefreshEnabled()
+    // Losing the control entirely is the one case that clears a spinner regardless of what the
+    // caller last said, because there is nothing left to spin.
+    val refreshing = pendingRefreshing && pendingRefreshEnabled
+    if (refresh.isRefreshing != refreshing) refresh.isRefreshing = refreshing
+  }
+
+  fun setRefreshProgressViewOffset(dip: Float) {
+    refresh.setProgressViewOffsetDip(dip)
+  }
+
+  /**
+   * The arc's colours. Unset resolves through the appearance, so a themed list gets its own tint
+   * rather than the stock holo blue.
+   */
+  fun setRefreshColors(colors: IntArray?) {
+    refreshColors = colors
+    applyRefreshColors()
+  }
+
+  fun setRefreshProgressBackgroundColor(color: Int?) {
+    refreshBackgroundColor = color
+    applyRefreshColors()
+  }
+
+  fun setRefreshSize(large: Boolean) {
+    refresh.setSize(if (large) SwipeRefreshLayout.LARGE else SwipeRefreshLayout.DEFAULT)
+  }
+
+  private var refreshColors: IntArray? = null
+  private var refreshBackgroundColor: Int? = null
+
+  /** Re-run from [restyle] as well, so a `colorScheme` flip carries to the indicator. */
+  private fun applyRefreshColors() {
+    val resolver = resolver()
+    refresh.setColorSchemeColors(
+      *(refreshColors
+        ?: intArrayOf(
+          resolver.color({ it.tintColor }, AppearanceResolver.COLOR_PRIMARY, Color.BLACK)
+        ))
+    )
+    refresh.setProgressBackgroundColorSchemeColor(
+      refreshBackgroundColor
+        ?: resolver.token(AppearanceResolver.COLOR_SURFACE_CONTAINER, Color.WHITE)
+    )
   }
 
   fun setShowsVerticalScrollIndicator(value: Boolean) {
@@ -667,6 +797,9 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     val schemeChanged = pendingColorScheme != appliedColorScheme
     val revisionChanged = pendingRevision != appliedRevision
 
+    // Order-free, and cheap enough to run unconditionally: two field compares.
+    applyRefreshState()
+
     if (schemeChanged) appliedColorScheme = pendingColorScheme
 
     if (revisionChanged) {
@@ -774,6 +907,7 @@ class RNGUICollectionViewView(context: ThemedReactContext) : FrameLayout(context
     // left a pinned header and a scrubber thumb in the old palette on top of repainted rows.
     stickyHeaders.restyle()
     sectionIndex.restyle(list)
+    applyRefreshColors()
     applyBackground()
     // The decoration draws from `onDraw`, which only runs on a draw pass — and a restyle that
     // changes nothing about layout would not schedule one.
