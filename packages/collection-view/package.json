@@ -1,6 +1,6 @@
 {
   "name": "@rngui/collection-view",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A real UICollectionView on iOS and a real RecyclerView on Android, for React Native, with a Radix-style compound API.",
   "license": "AGPL-3.0-only",
   "author": "Phil <phil.schaffarzyk@gmail.com>",
