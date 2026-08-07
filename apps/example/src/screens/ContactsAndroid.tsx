@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshControl } from 'react-native'
 import { CollectionView, type VisibleRange } from '@rngui/collection-view'
 import { buildContacts } from '../data/contacts'
@@ -103,9 +103,13 @@ export default function ContactsScreenAndroid() {
    * Without that it would settle underneath the status bar.
    */
   const [refreshing, setRefreshing] = useState(false)
+  // Held so leaving the tab mid-refresh cancels it, as on the iOS screen.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(refreshTimer.current), [])
+
   const onRefresh = useCallback(() => {
     setRefreshing(true)
-    setTimeout(() => {
+    refreshTimer.current = setTimeout(() => {
       setDeleted(new Set())
       setRefreshing(false)
     }, 1200)

@@ -69,15 +69,32 @@ class PullToRefreshLayout(context: ThemedReactContext) : SwipeRefreshLayout(cont
   }
 
   /**
+   * The size the indicator draws at — `DEFAULT` or `LARGE`.
+   *
+   * Overridden **because the offsets are measured from `progressCircleDiameter`, and this is what
+   * changes it.** Fabric writes props one setter at a time in no guaranteed order, so `refreshSize`
+   * routinely lands after `refreshProgressViewOffset`; without re-resolving here, a large indicator
+   * keeps the resting position computed for a small one, 16dp off.
+   */
+  override fun setSize(size: Int) {
+    super.setSize(size)
+    applyProgressViewOffset()
+  }
+
+  /**
    * `progressCircleDiameter` is only meaningful once the circle has been measured, so this is a
    * no-op before the first layout and is re-run from [onLayout].
    */
   private fun applyProgressViewOffset() {
     if (!didLayout) return
-    val diameter = progressCircleDiameter
-    val offsetPx = (offsetDip * resources.displayMetrics.density).roundToInt() + topInsetPx
-    val targetPx = (CIRCLE_TARGET_DIP * resources.displayMetrics.density).roundToInt()
-    setProgressViewOffset(false, offsetPx - diameter, offsetPx + targetPx - diameter)
+    val offsets =
+      RefreshOffsets.resolve(
+        offsetDip = offsetDip,
+        topInsetPx = topInsetPx,
+        diameterPx = progressCircleDiameter,
+        density = resources.displayMetrics.density,
+      )
+    setProgressViewOffset(false, offsets.start, offsets.end)
   }
 
   override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
@@ -149,8 +166,34 @@ class PullToRefreshLayout(context: ThemedReactContext) : SwipeRefreshLayout(cont
     return true
   }
 
-  private companion object {
-    /** `SwipeRefreshLayout.DEFAULT_CIRCLE_TARGET`, which is not public. */
-    const val CIRCLE_TARGET_DIP = 64f
+}
+
+/**
+ * Where the refresh indicator starts and comes to rest, in pixels.
+ *
+ * A plain object rather than three lines inside the view, for one reason: it is the only part of
+ * the refresh path that is arithmetic rather than framework, and the only part a JVM test can
+ * reach. Two of its three inputs are easy to forget — the resolved content inset, because the
+ * wrapper's own origin is the top of the *window* while the list's content starts below the
+ * chrome, and the circle diameter, because it changes with `size` after the offsets were last
+ * computed.
+ *
+ * The formula is React Native's own (`ReactSwipeRefreshLayout.setProgressViewOffset`) with
+ * `topInsetPx` folded in, which React Native has no need for: its `ScrollView` is not resolving
+ * insets the way this list is.
+ */
+object RefreshOffsets {
+  /** `SwipeRefreshLayout.DEFAULT_CIRCLE_TARGET`, which is not public. */
+  const val CIRCLE_TARGET_DIP = 64f
+
+  data class Offsets(val start: Int, val end: Int)
+
+  fun resolve(offsetDip: Float, topInsetPx: Int, diameterPx: Int, density: Float): Offsets {
+    // The indicator is measured from where the *content* starts, not from the window edge.
+    val originPx = (offsetDip * density).roundToInt() + topInsetPx
+    val targetPx = (CIRCLE_TARGET_DIP * density).roundToInt()
+    // Both ends shift up by one diameter: `setProgressViewOffset` positions the circle's top edge,
+    // and "hidden" means one full circle above the origin.
+    return Offsets(start = originPx - diameterPx, end = originPx + targetPx - diameterPx)
   }
 }

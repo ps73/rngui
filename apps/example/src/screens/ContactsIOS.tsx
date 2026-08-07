@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { RefreshControl } from 'react-native'
 import { CollectionView, type VisibleRange } from '@rngui/collection-view'
 import { buildContacts } from '../data/contacts'
@@ -73,9 +73,14 @@ export default function ContactsScreenIOS() {
    * holds at all.
    */
   const [refreshing, setRefreshing] = useState(false)
+  // Held so leaving the tab mid-refresh cancels it. A demo gets copied, so it should not model a
+  // timer that outlives the screen that started it.
+  const refreshTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
+  useEffect(() => () => clearTimeout(refreshTimer.current), [])
+
   const onRefresh = useCallback(() => {
     setRefreshing(true)
-    setTimeout(() => {
+    refreshTimer.current = setTimeout(() => {
       // Deleting is the only thing this screen changes, so undeleting is the only honest thing a
       // refresh can restore.
       setDeleted(new Set())

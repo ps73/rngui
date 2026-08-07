@@ -123,7 +123,15 @@ const AnimatedCollectionView = Animated.createAnimatedComponent(
 
 export interface BottomSheetCollectionViewProps extends Omit<
   RootProps,
-  'onScroll' | 'ref' | 'tracksScroll'
+  | 'onScroll'
+  | 'ref'
+  | 'tracksScroll'
+  // Dropped at runtime, so dropped from the type too. Accepting a `refreshControl` here and
+  // then discarding it would be a control that type-checks, renders and never fires — which is
+  // the failure the ignore list above exists to prevent, not an instance of it.
+  | 'refreshControl'
+  | 'refreshing'
+  | 'onRefresh'
 > {
   /**
    * Scroll position, on every frame.
