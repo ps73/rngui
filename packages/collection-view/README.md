@@ -207,6 +207,39 @@ The scroll callbacks are what turn the native events on — a list that does not
 them. If you attach a reanimated handler instead (which subscribes by view tag, not by prop), set
 `tracksScroll` so native knows somebody is listening.
 
+**Pull to refresh.** `refreshControl` takes a `RefreshControl` element, exactly as `ScrollView`
+takes one:
+
+```tsx
+<CollectionView.Root
+  refreshControl={
+    <RefreshControl refreshing={busy} onRefresh={reload} tintColor="#0FA3A3" />
+  }
+/>
+```
+
+`refreshing` and `onRefresh` are also accepted directly, which is `FlatList`'s shorthand for the
+same thing. The element wins if both are given.
+
+**The element is read, never rendered.** Its props are unpacked onto the native view, which drives a
+real `UIRefreshControl` and a real `SwipeRefreshLayout` — so it can be React Native's own
+`RefreshControl` or anything carrying the same props, but it never mounts, never runs an effect, and
+never appears in the hierarchy as itself. That is not a shortcut: the React children of this
+component are _exactly_ the `Host` subtrees, addressed positionally, so one extra mounted child
+would shift every hosted row. And on Android React Native's control is a wrapper _around_ the
+scrollable, which could not have been a child of it in any case.
+
+`refreshing` is **controlled**, as `RefreshControl` documents. Set it to `true` inside `onRefresh` or
+the spinner stops on the next render. A prop cannot express that on its own — a pull starts the
+spinner natively while JavaScript still says `false`, so a caller who does nothing changes no prop
+and there would be nothing to stop it. `Root` notices the disagreement after its own render and
+corrects it with a native command, which is what React Native's `RefreshControl` does too.
+
+`enabled` is React Native's Android-only prop and works on both here; the divergence is additive.
+`colors`, `progressBackgroundColor` and `size` are Android's, and do nothing on iOS — a
+`UIRefreshControl` has one colour and one size. `title` and `titleColor` are the mirror image. There
+is no `horizontal` mode to guard against: this list is vertical by construction.
+
 ## Hosting React children
 
 `Host` is the escape hatch for content no row kind describes — a chart, a map, a custom control:
@@ -260,6 +293,14 @@ It takes `Root`'s props, minus the few the sheet owns. Two things are worth know
 `0`, which only works if `0` is the top), so pass `contentInset={{ bottom }}` yourself if the sheet
 reaches the screen edge. And `onScroll` arrives wrapped in `{ nativeEvent }` here, because gorhom
 re-wraps the event before handing it on.
+
+**`refreshControl` is dropped here**, and it is the one prop that is real on `Root` and deliberately
+not forwarded. Inside a sheet the pull and the sheet's own collapse are the same gesture: at
+`contentOffset 0` the list cannot scroll up, so gesture-handler never activates and the sheet keeps
+the drag — and below the tallest detent gorhom locks the list outright, which switches the refresh
+layout off on Android and stops the rubber-band on iOS. A control that renders and never fires is
+worse than one that was never accepted. `@gorhom/bottom-sheet` has the same conflict with a plain
+`BottomSheetScrollView`.
 
 ## Why React Native codegen, not Nitro
 
@@ -334,23 +375,25 @@ consuming app is what keeps this a library you install rather than one you confi
 
 Decisions, not gaps. Each one is the platform's own idiom rather than the other's.
 
-| Concept                         | iOS                                   | Android                                                                                                                                                |
-| ------------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `insetGrouped`                  | `UICollectionLayoutListConfiguration` | M3 containers — `segmented` by default, see `androidListStyle`                                                                                         |
-| `plain` + pinned headers        | free from compositional layout        | a hand-written `ItemDecoration`, with push-off                                                                                                         |
-| `systemImage`                   | SF Symbols                            | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
-| Section index                   | an A–Z rail                           | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
-| `plain` pinned headers          | **iOS 26+ only** — see below          | always pinned, via a hand-written `ItemDecoration`                                                                                                     |
-| Swipe actions                   | `UISwipeActionsConfiguration`         | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
-| `datePickerStyle: 'wheels'`     | a drum picker                         | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
-| `datePickerMode: 'dateAndTime'` | one combined wheel                    | two dialogs, chained — Material has no combined picker                                                                                                 |
-| `Slider`                        | `UISlider` — thin track, capsule knob | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |
-| `Slider` `step`                 | enforced, but not drawn               | enforced **and drawn**, as tick marks. `UISlider` has never had them                                                                                   |
-| `Slider` min/max images         | `minimumValueImage` slots             | icon views laid out either side; Material's slider has no such property                                                                                |
-| `Icon` `background`             | Settings' 29pt rounded square         | M3's 40dp circle. The tile is Apple's — Android's leading element is a bare icon or a round avatar                                                     |
-| `Icon` `monogram`               | initials on a circle                  | the same, and the one case where the container shape does **not** differ: an avatar is round on both                                                   |
-| Overscroll                      | rubber-band bounce                    | stretch or glow                                                                                                                                        |
-| `contentSize.height`            | exact                                 | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
+| Concept                         | iOS                                                     | Android                                                                                                                                                |
+| ------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `insetGrouped`                  | `UICollectionLayoutListConfiguration`                   | M3 containers — `segmented` by default, see `androidListStyle`                                                                                         |
+| `plain` + pinned headers        | free from compositional layout                          | a hand-written `ItemDecoration`, with push-off                                                                                                         |
+| `systemImage`                   | SF Symbols                                              | Material Symbols, via a curated map — **partial by nature**; see `materialSymbol`                                                                      |
+| Section index                   | an A–Z rail                                             | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
+| `plain` pinned headers          | **iOS 26+ only** — see below                            | always pinned, via a hand-written `ItemDecoration`                                                                                                     |
+| Swipe actions                   | `UISwipeActionsConfiguration`                           | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
+| `datePickerStyle: 'wheels'`     | a drum picker                                           | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
+| `datePickerMode: 'dateAndTime'` | one combined wheel                                      | two dialogs, chained — Material has no combined picker                                                                                                 |
+| `Slider`                        | `UISlider` — thin track, capsule knob                   | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |
+| `Slider` `step`                 | enforced, but not drawn                                 | enforced **and drawn**, as tick marks. `UISlider` has never had them                                                                                   |
+| `Slider` min/max images         | `minimumValueImage` slots                               | icon views laid out either side; Material's slider has no such property                                                                                |
+| `Icon` `background`             | Settings' 29pt rounded square                           | M3's 40dp circle. The tile is Apple's — Android's leading element is a bare icon or a round avatar                                                     |
+| `Icon` `monogram`               | initials on a circle                                    | the same, and the one case where the container shape does **not** differ: an avatar is round on both                                                   |
+| Overscroll                      | rubber-band bounce                                      | stretch or glow                                                                                                                                        |
+| `refreshControl`                | `UIRefreshControl` — one colour, and a caption under it | `SwipeRefreshLayout` — a circle that cycles `colors`, and no room for a caption                                                                        |
+| `refreshControl` unstyled       | the system tint                                         | the list's own `appearance.tintColor`, rather than the stock blue                                                                                      |
+| `contentSize.height`            | exact                                                   | an estimate, from `computeVerticalScrollRange()`                                                                                                       |
 
 `keyboardShouldPersistTaps` is `ScrollView`'s prop by the same name — `never` (default), `always`,
 or `handled`, where "handled" means the row under the finger has an `onPress`. One deliberate
@@ -386,12 +429,14 @@ The bundled face is **subset** — the full Material Symbols variable font is 14
 
 Accepted so shared screens keep type-checking, and deliberately doing nothing:
 
-| Prop                                        | Why                                                                    |
-| ------------------------------------------- | ---------------------------------------------------------------------- |
-| `sectionIndexRowHeight`                     | sets the per-letter height of an A–Z rail. There is no rail on Android |
-| `automaticallyAdjustsScrollIndicatorInsets` | the indicator is drawn inside the list's padding already               |
-| `keyboardDismissMode: 'interactive'`        | maps to `onDrag`. Android has no interactive dismissal                 |
-| `datePickerStyle: 'inline' \| 'wheels'`     | both fall back to the platform dialog, and warn once                   |
+| Prop                                        | Why                                                                                                                                                                   |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sectionIndexRowHeight`                     | sets the per-letter height of an A–Z rail. There is no rail on Android                                                                                                |
+| `automaticallyAdjustsScrollIndicatorInsets` | the indicator is drawn inside the list's padding already                                                                                                              |
+| `keyboardDismissMode: 'interactive'`        | maps to `onDrag`. Android has no interactive dismissal                                                                                                                |
+| `datePickerStyle: 'inline' \| 'wheels'`     | both fall back to the platform dialog, and warn once                                                                                                                  |
+| `RefreshControl` `title` / `titleColor`     | Material's indicator is a bare circle with no room for a caption                                                                                                      |
+| `RefreshControl` `tintColor`                | the Android equivalent is `colors`, a list. Left unset, the indicator resolves through `appearance.tintColor` instead, which is the value a themed screen already set |
 
 ### Insets and navigation headers
 

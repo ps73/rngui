@@ -131,3 +131,20 @@ class VisibleRangeChangeEvent(
     const val NAME = "topVisibleRangeChange"
   }
 }
+
+/**
+ * The pull. The only event here with no payload at all, as `RefreshControl` has it.
+ *
+ * An empty map rather than null: the dispatcher writes whatever `getEventData` returns straight
+ * into the JavaScript event object, and a null there reaches the handler as a missing
+ * `nativeEvent`.
+ */
+class RefreshEvent(surfaceId: Int, viewTag: Int) : Event<RefreshEvent>(surfaceId, viewTag) {
+  override fun getEventName() = NAME
+
+  override fun getEventData(): WritableMap = Arguments.createMap()
+
+  companion object {
+    const val NAME = "topRefresh"
+  }
+}

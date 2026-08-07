@@ -4,7 +4,7 @@
 // bundler to warn about.
 import { codegenNativeComponent, codegenNativeCommands } from 'react-native'
 
-import type { HostComponent, ViewProps } from 'react-native'
+import type { ColorValue, HostComponent, ViewProps } from 'react-native'
 import type {
   DirectEventHandler,
   Double,
@@ -309,6 +309,65 @@ export interface NativeProps extends ViewProps {
     Readonly<{ firstIndex: Int32; lastIndex: Int32 }>
   >
 
+  // -------------------------------------------------------------------------
+  // Pull to refresh
+  //
+  // `RefreshControl`'s surface, flattened. `Root` takes the element `ScrollView` takes, and then
+  // *reads* it rather than mounting it — because the React children of this component are exactly
+  // the `Host` subtrees and `RowSpec.hostIndex` addresses them positionally, so one extra mounted
+  // child would shift every hosted row. There is no arrangement that avoids that: Android's
+  // control is a wrapper *around* the scrollable, so it could not have been a sibling anyway.
+  //
+  // Colours cross as `ColorValue` rather than as the hex strings the tree uses, and the
+  // inconsistency is only apparent. Hex exists because Swift `Codable` and `org.json` cannot
+  // express a colour, so `resolveColor` flattens `PlatformColor` away before anything reaches the
+  // tree. A typed prop is under no such constraint — and `ColorValue` is one of the very few
+  // codegen types with a real representation of "unset", which is the thing the note at the top of
+  // this file says typed props lack.
+  // -------------------------------------------------------------------------
+
+  /** Whether the list has a refresh control at all. Set by `Root` from whether one was passed. */
+  refreshEnabled?: boolean
+
+  /**
+   * Whether the control is spinning. **Controlled**, exactly as `RefreshControl` documents it.
+   *
+   * A prop alone cannot hold that contract up. A pull starts the spinner natively while
+   * JavaScript's value is still `false`, so a caller who never sets it true produces *no prop
+   * change* — nothing for Fabric to send, and nothing to ever stop it. `setNativeRefreshing` below
+   * is the correction, and it is the same escape hatch React Native's own `RefreshControl.js`
+   * reaches for, for the same reason.
+   */
+  refreshing?: boolean
+
+  /**
+   * Points the indicator is pushed down from the top of the list.
+   *
+   * No sentinel, unlike `decelerationRate`: `0` is the default *and* a meaningful value, so there
+   * is nothing to distinguish from absent.
+   */
+  refreshProgressViewOffset?: Float
+
+  /** The colour of the spinner. iOS. */
+  refreshTintColor?: ColorValue
+  /** The caption under the spinner, which Material's indicator has no room for. iOS. */
+  refreshTitle?: string
+  refreshTitleColor?: ColorValue
+
+  /**
+   * The colours the indicator cycles through. Android — `UIRefreshControl` has exactly one.
+   *
+   * An array of `ColorValue`, which codegen does support: React Native ships the same declaration
+   * in `AndroidSwipeRefreshLayoutNativeComponent` with no platform exclusion, so the
+   * `std::vector<SharedColor>` it generates compiles on both.
+   */
+  refreshColors?: ReadonlyArray<ColorValue>
+  refreshProgressBackgroundColor?: ColorValue
+  refreshSize?: WithDefault<'default' | 'large', 'default'>
+
+  /** No payload, as `RefreshControl` has it. */
+  onRefresh?: DirectEventHandler<null>
+
   /**
    * Row-scoped events.
    *
@@ -375,10 +434,27 @@ interface NativeCommands {
     y: Double,
     animated: boolean
   ) => void
+
+  /**
+   * Corrects the refresh spinner when the `refreshing` prop cannot.
+   *
+   * The pull starts the spinner natively, so JavaScript's `refreshing` is still `false` and stays
+   * `false` for a caller who does nothing in `onRefresh`. No prop changed, so `updateProps` never
+   * runs, so nothing would ever stop the spinner — a prop is structurally incapable of expressing
+   * "put it back where I said". `Root` notices the disagreement after its own render and sends
+   * this, which is precisely what `RefreshControl.js` does with the same name.
+   *
+   * The receiving setter guards on the *control's* state rather than on a stored copy of the prop.
+   * A prop-value guard would swallow this call, since the prop is the thing that did not change.
+   */
+  setNativeRefreshing: (
+    viewRef: React.ElementRef<HostComponent<NativeProps>>,
+    refreshing: boolean
+  ) => void
 }
 
 export const Commands: NativeCommands = codegenNativeCommands<NativeCommands>({
-  supportedCommands: ['scrollTo'],
+  supportedCommands: ['scrollTo', 'setNativeRefreshing'],
 })
 
 export default codegenNativeComponent<NativeProps>('RNGUICollectionView')

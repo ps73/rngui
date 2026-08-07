@@ -161,6 +161,12 @@ dependencies {
 
   implementation "androidx.recyclerview:recyclerview:1.4.0"
 
+  // Pull-to-refresh. Pinned to the version React Native itself publishes as an `api` dependency —
+  // see its `gradle/libs.versions.toml` — so the app resolves one copy rather than two that differ
+  // by a patch. It would arrive transitively through `react-native` either way; declared because
+  // this file declares everything else it uses, and a transitive is not a contract.
+  implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
+
   // Material Components, and the reason this library stopped drawing Android in iOS's colours.
   //
   // It brings three things nothing else can: the M3 *colour tokens* (surface, surfaceContainer,

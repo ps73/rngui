@@ -1,9 +1,12 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   type ComponentRef,
+  type ReactElement,
   type ReactNode,
   type Ref,
 } from 'react'
@@ -12,9 +15,12 @@ import {
   StyleSheet,
   View,
   type NativeSyntheticEvent,
+  type RefreshControlProps,
   type ViewProps,
 } from 'react-native'
-import NativeCollectionView from './specs/RNGUICollectionViewNativeComponent'
+import NativeCollectionView, {
+  Commands,
+} from './specs/RNGUICollectionViewNativeComponent'
 import { EMPTY_MEASUREMENTS, createRegistry, serialize } from './serialize'
 import {
   AppearanceProvider,
@@ -256,7 +262,56 @@ export interface RootProps extends Pick<ViewProps, 'style' | 'testID'> {
    */
   onVisibleRangeChange?: (range: VisibleRange) => void
 
+  /**
+   * A `RefreshControl` element, exactly as `ScrollView` takes one.
+   *
+   * ```tsx
+   * <CollectionView.Root
+   *   refreshControl={<RefreshControl refreshing={busy} onRefresh={reload} />}
+   * />
+   * ```
+   *
+   * **Read, never rendered.** Its props are unpacked onto the native view, which drives a real
+   * `UIRefreshControl` on iOS and a real `SwipeRefreshLayout` on Android. So it can be React
+   * Native's own `RefreshControl` or anything carrying the same props, but it never mounts, never
+   * runs an effect, and never appears in the view hierarchy as itself.
+   *
+   * That is not a shortcut. The React children of the native view are *exactly* the `Host`
+   * subtrees, addressed positionally, so one extra mounted child would shift every hosted row —
+   * and on Android React Native's control is a wrapper *around* the scrollable, which could not
+   * have been a child of it in any case.
+   *
+   * `refreshing` is **controlled**, as `RefreshControl` documents: set it to `true` inside
+   * `onRefresh` or the spinner stops on the next render.
+   */
+  refreshControl?: ReactElement<RefreshControlProps>
+
+  /**
+   * `FlatList`'s shorthand for the same thing, for callers who do not want the element.
+   *
+   * `refreshControl` wins whenever both are given. Everything the element can style —
+   * `tintColor`, `colors`, `title` — is only reachable through it.
+   */
+  refreshing?: boolean
+  onRefresh?: () => void
+
   children?: ReactNode
+}
+
+/**
+ * `RefreshControl`'s props, however the caller chose to express them.
+ *
+ * Returns `null` when there is no refresh control at all, which is what `refreshEnabled` is set
+ * from — one answer for "was one passed", rather than each call site re-deriving it.
+ */
+function resolveRefreshControl(
+  element: ReactElement<RefreshControlProps> | undefined,
+  refreshing: boolean | undefined,
+  onRefresh: (() => void) | undefined
+): RefreshControlProps | null {
+  if (element != null) return element.props
+  if (onRefresh == null && refreshing == null) return null
+  return { refreshing: refreshing ?? false, onRefresh }
 }
 
 /**
@@ -322,6 +377,13 @@ export function Root({
   onContentSizeChange,
   tracksScroll,
   onVisibleRangeChange,
+  // Destructured rather than spread, all three. The public `onRefresh` is `() => void`; the native
+  // prop of the same name is a `DirectEventHandler` that would hand it an event object it was
+  // never typed for, and `refreshControl` is an element the native view has no idea what to do
+  // with.
+  refreshControl,
+  refreshing: refreshingProp,
+  onRefresh: onRefreshProp,
   children,
   ...rest
 }: RootProps) {
@@ -409,6 +471,67 @@ export function Root({
   // The horizontal inset UIKit gives a grouped section's card on iPhone. A constant because it is
   // UIKit's metric, not ours, and it is not exposed anywhere queryable.
   const hostedMargin = listAppearance === 'plain' ? 0 : GROUPED_CARD_MARGIN
+
+  // -----------------------------------------------------------------------------------------
+  // Pull to refresh
+  // -----------------------------------------------------------------------------------------
+
+  const refresh = resolveRefreshControl(
+    refreshControl,
+    refreshingProp,
+    onRefreshProp
+  )
+  const refreshing = refresh?.refreshing ?? false
+
+  /**
+   * The native view, held here as well as handed to the caller.
+   *
+   * Needed because the refresh correction below is a *command*, and a command needs an instance.
+   * The caller's own `ref` still receives everything it would have; this only tees off it.
+   */
+  const nativeRef = useRef<CollectionViewInstance | null>(null)
+  const setNativeRef = useCallback(
+    (instance: CollectionViewInstance | null) => {
+      nativeRef.current = instance
+      if (typeof ref === 'function') ref(instance)
+      else if (ref != null && typeof ref === 'object') ref.current = instance
+    },
+    [ref]
+  )
+
+  /**
+   * What native is believed to be doing, as against what `refreshing` says.
+   *
+   * **A prop cannot express the correction on its own, and this is why.** A pull starts the
+   * spinner natively while JavaScript's `refreshing` is still `false`. A caller who does nothing
+   * in `onRefresh` therefore changes no prop, Fabric sends no update, `updateProps` never runs,
+   * and the spinner would spin forever. So the disagreement is detected here and corrected with a
+   * command — which is exactly what React Native's own `RefreshControl` does, under the same name.
+   */
+  const nativeRefreshing = useRef(refreshing)
+  const lastRefreshingProp = useRef(refreshing)
+  // `forceUpdate`, spelled the way a function component can spell it. Its only job is to make the
+  // effect below run after `onRefresh`, when nothing else would have re-rendered.
+  const [, syncRefreshing] = useReducer((n: number) => n + 1, 0)
+
+  useEffect(() => {
+    if (refreshing !== lastRefreshingProp.current) {
+      // The prop moved, so the prop update itself carries the value across.
+      lastRefreshingProp.current = refreshing
+      nativeRefreshing.current = refreshing
+    } else if (refreshing !== nativeRefreshing.current && nativeRef.current) {
+      Commands.setNativeRefreshing(nativeRef.current, refreshing)
+      nativeRefreshing.current = refreshing
+    }
+  })
+
+  const handleRefresh = useCallback(() => {
+    // Native has already started spinning; record that before the callback runs, so a caller who
+    // sets `refreshing` synchronously does not look like a disagreement.
+    nativeRefreshing.current = true
+    refresh?.onRefresh?.()
+    syncRefreshing()
+  }, [refresh?.onRefresh])
 
   // Unwrapped here rather than in native so the public callback takes a plain object and the
   // `nativeEvent` shape stays an implementation detail.
@@ -522,7 +645,7 @@ export function Root({
     <AppearanceProvider value={inherited}>
       <NativeCollectionView
         {...rest}
-        ref={ref}
+        ref={setNativeRef}
         // `flex: 1` by default: this is a scroll view, and every screen that uses one wants it
         // to fill its parent. Callers can still override through `style`.
         style={[styles.fill, style]}
@@ -574,6 +697,19 @@ export function Root({
         // always installed and always dispatches — so the answer has to be sent.
         tracksVisibleRange={onVisibleRangeChange != null}
         onVisibleRangeChange={handleVisibleRangeChange}
+        // `enabled` is `RefreshControl`'s Android-only prop, and folding it in here makes it work
+        // on both. A deliberate, additive divergence: React Native ignoring it on iOS is a
+        // papercut rather than a contract, and one boolean is easier to reason about than two.
+        refreshEnabled={refresh != null && refresh.enabled !== false}
+        refreshing={refreshing}
+        refreshProgressViewOffset={refresh?.progressViewOffset ?? 0}
+        refreshTintColor={refresh?.tintColor}
+        refreshTitle={refresh?.title}
+        refreshTitleColor={refresh?.titleColor}
+        refreshColors={refresh?.colors}
+        refreshProgressBackgroundColor={refresh?.progressBackgroundColor}
+        refreshSize={refresh?.size}
+        onRefresh={handleRefresh}
         {...handlers}
       >
         {/*

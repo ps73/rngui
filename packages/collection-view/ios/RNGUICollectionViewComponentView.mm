@@ -247,6 +247,11 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
       emitter->onContentSizeChange({.width = size.width, .height = size.height});
     };
 
+    _host.onRefresh = ^{
+      RNGUI_EMITTER(emitter)
+      emitter->onRefresh({});
+    };
+
 #undef RNGUI_EMITTER
 
     // The collection view has to be reachable by walking `subviews[0]`, and has to stay
@@ -373,6 +378,43 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
     [_host setTracksScroll:newViewProps.tracksScroll];
   }
 
+  // -------------------------------------------------------------------------------------------
+  // Pull to refresh
+  //
+  // **Order matters here in a way it does not anywhere else in this method: `refreshing` must be
+  // applied last.** `UIRefreshControl` reads its own appearance when it starts, and an attribute
+  // written after `beginRefreshing()` is not picked up until the next spin. React Native's own
+  // Fabric component carries the same warning.
+  //
+  // `refreshColors`, `refreshProgressBackgroundColor` and `refreshSize` are deliberately absent:
+  // they describe `SwipeRefreshLayout`, and `UIRefreshControl` has one colour and one size.
+  // Nothing forces an override here the way the generated Kotlin interface does on Android, so
+  // they are simply not read.
+  // -------------------------------------------------------------------------------------------
+
+  if (oldViewProps.refreshEnabled != newViewProps.refreshEnabled) {
+    [_host setRefreshEnabled:newViewProps.refreshEnabled];
+  }
+
+  if (oldViewProps.refreshTintColor != newViewProps.refreshTintColor) {
+    [_host setRefreshTintColor:RCTUIColorFromSharedColor(newViewProps.refreshTintColor)];
+  }
+
+  // Both fields in one call, so a colour change with an unchanged title still repaints.
+  if (oldViewProps.refreshTitle != newViewProps.refreshTitle ||
+      oldViewProps.refreshTitleColor != newViewProps.refreshTitleColor) {
+    [_host setRefreshTitle:RCTNSStringFromStringNilIfEmpty(newViewProps.refreshTitle)
+                     color:RCTUIColorFromSharedColor(newViewProps.refreshTitleColor)];
+  }
+
+  if (oldViewProps.refreshProgressViewOffset != newViewProps.refreshProgressViewOffset) {
+    [_host setRefreshProgressViewOffset:newViewProps.refreshProgressViewOffset];
+  }
+
+  if (oldViewProps.refreshing != newViewProps.refreshing) {
+    [_host setRefreshing:newViewProps.refreshing];
+  }
+
   [super updateProps:props oldProps:oldProps];
 }
 
@@ -394,6 +436,22 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
 - (void)scrollTo:(double)x y:(double)y animated:(BOOL)animated
 {
   [_host scrollToX:x y:y animated:animated];
+}
+
+/**
+ * The other command, and the one that exists because a prop cannot do the job.
+ *
+ * A pull starts the spinner natively while JavaScript's `refreshing` is still `false`. A caller who
+ * does nothing in `onRefresh` therefore changes no prop, so `updateProps` never runs and the block
+ * above never executes — the spinner would spin forever. `Root` notices the disagreement after its
+ * own render and sends this instead.
+ *
+ * It routes to the same setter as the prop, whose guard reads the control's real state rather than
+ * a stored copy of the prop. That is what makes one method correct for both callers.
+ */
+- (void)setNativeRefreshing:(BOOL)refreshing
+{
+  [_host setRefreshing:refreshing];
 }
 
 #pragma mark - React children

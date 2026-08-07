@@ -11,9 +11,18 @@ import { Root, type RootProps, type ScrollMetrics } from './CollectionView'
 /**
  * Props gorhom hands to every scrollable, which mean nothing here.
  *
- * Most are `ScrollView`'s Android or refresh-control surface. They are dropped explicitly rather
- * than spread onto the native view, where they would be silently discarded at the Fabric boundary
- * and leave nothing to read when someone wonders why `refreshControl` did nothing.
+ * Most are `ScrollView`'s Android surface. They are dropped explicitly rather than spread onto the
+ * native view, where they would be silently discarded at the Fabric boundary and leave nothing to
+ * read when someone wonders why one of them did nothing.
+ *
+ * **`refreshControl` is the one that is real on `Root` and still dropped here, and that is a
+ * decision rather than an omission.** Inside a sheet the pull and the sheet's own collapse are the
+ * same gesture: at `contentOffset 0` the list cannot scroll up, so `wouldScroll()` answers false,
+ * `NativeViewGestureHandler` never activates, and the sheet keeps the drag. Below the tallest
+ * detent gorhom locks the list outright — `scrollEnabled: false`, which switches the refresh layout
+ * off on Android and stops the rubber-band on iOS. A `refreshControl` forwarded here would
+ * therefore be a control that renders and never fires, which is worse than one that was never
+ * accepted. `@gorhom/bottom-sheet` has the same conflict with a plain `BottomSheetScrollView`.
  */
 const IGNORED_SCROLLABLE_PROPS = [
   'overScrollMode',
@@ -114,7 +123,15 @@ const AnimatedCollectionView = Animated.createAnimatedComponent(
 
 export interface BottomSheetCollectionViewProps extends Omit<
   RootProps,
-  'onScroll' | 'ref' | 'tracksScroll'
+  | 'onScroll'
+  | 'ref'
+  | 'tracksScroll'
+  // Dropped at runtime, so dropped from the type too. Accepting a `refreshControl` here and
+  // then discarding it would be a control that type-checks, renders and never fires — which is
+  // the failure the ignore list above exists to prevent, not an instance of it.
+  | 'refreshControl'
+  | 'refreshing'
+  | 'onRefresh'
 > {
   /**
    * Scroll position, on every frame.
