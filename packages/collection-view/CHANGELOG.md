@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+**Leading swipe actions, documented.** No behaviour change: `SwipeActions` has taken
+`edge="leading"` since 0.1.0 and both backends have always honoured it. But the README said so in
+one table cell, no example used it, and it was reported as missing — which is a documentation bug
+with the same cost as a real one. The README now carries a worked two-edge example, the rule that
+action ids are unique per row rather than per edge, and the Android caveat that a right-swipe
+competes with the system back gesture and that `systemGestureExclusionRects` is rationed to 200dp
+per edge. The example app's Reminders and Contacts screens now swipe both ways.
+
 **Pull to refresh.** `Root` takes `refreshControl`, spelled the way `ScrollView` spells it — a
 `RefreshControl` element — plus `refreshing` / `onRefresh` directly, which is `FlatList`'s
 shorthand. It drives a real `UIRefreshControl` on iOS and a real `SwipeRefreshLayout` on Android.

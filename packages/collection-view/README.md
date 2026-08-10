@@ -94,6 +94,50 @@ second source of truth to disagree with the children.
 | `SwipeActions` | `edge` — `'trailing'` (default) or `'leading'`                           |
 | `SwipeAction`  | `id` · `title` · `systemImage` · `style` · `backgroundColor` · `onPress` |
 
+**Both edges.** A row takes one `SwipeActions` group per edge. `edge` defaults to `'trailing'`,
+revealed by swiping left; `'leading'` is revealed by swiping right, the same handedness on both
+platforms:
+
+```tsx
+<CollectionView.Row id={task.id}>
+  <CollectionView.Label>{task.title}</CollectionView.Label>
+  <CollectionView.SwipeActions>
+    <CollectionView.SwipeAction
+      id="delete"
+      title="Delete"
+      systemImage="trash"
+      style="destructive"
+      onPress={() => remove(task.id)}
+    />
+  </CollectionView.SwipeActions>
+  <CollectionView.SwipeActions edge="leading">
+    <CollectionView.SwipeAction
+      id="complete"
+      title="Complete"
+      systemImage="checkmark.circle"
+      backgroundColor="#34C759"
+      onPress={() => complete(task.id)}
+    />
+  </CollectionView.SwipeActions>
+</CollectionView.Row>
+```
+
+An `id` is unique per **row**, not per edge — a row's handlers are keyed by action id alone, so
+`delete` on both edges would keep only the last one registered. Nothing warns about it.
+
+Pressing an action never removes the row. Native reports the tap and springs the row back, and the
+row leaves on the next commit as an animated diff, so the layout and the data source never disagree
+about whether it is gone.
+
+**On Android, a swipe competes with the system back gesture**, and this is the failure people
+actually hit. Back is an inward drag from _either_ screen edge, so a leading swipe collides with it
+on the left exactly as a trailing swipe does on the right. The list publishes
+`systemGestureExclusionRects` for the rows that carry actions, which is what makes swiping work at
+all on a gesture-navigation device. But the platform rations that budget to **200dp per edge** and
+drops the rest, keeping the topmost rects — so on a list where every row is swipeable, rows past
+roughly the first four still lose near the screen edge. Invisible on an emulator with three-button
+navigation.
+
 An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
 glyph reads as an interactive control. Give it a `background` and it becomes the platform's own
 icon container instead — Settings' 29pt continuous-corner square on iOS, M3's 40dp circle on
@@ -383,6 +427,7 @@ Decisions, not gaps. Each one is the platform's own idiom rather than the other'
 | Section index                   | an A–Z rail                                             | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
 | `plain` pinned headers          | **iOS 26+ only** — see below                            | always pinned, via a hand-written `ItemDecoration`                                                                                                     |
 | Swipe actions                   | `UISwipeActionsConfiguration`                           | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
+| `SwipeActions` `edge="leading"` | a full-height slab, as on the trailing edge             | the same mirrored tray — but the right-swipe competes with the system back gesture, and only the first ~200dp of swipeable rows win it                 |
 | `datePickerStyle: 'wheels'`     | a drum picker                                           | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
 | `datePickerMode: 'dateAndTime'` | one combined wheel                                      | two dialogs, chained — Material has no combined picker                                                                                                 |
 | `Slider`                        | `UISlider` — thin track, capsule knob                   | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |

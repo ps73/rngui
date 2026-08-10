@@ -276,7 +276,7 @@ export default function RemindersScreen() {
       <CollectionView.Section
         id="subtasks"
         header="Subtasks"
-        footer="Swipe a row to reveal its actions. Deleting is JavaScript's decision: native reports the tap and springs the row back, and the row leaves on the next commit as an animated diff — so the layout and the data source never disagree about whether it is gone."
+        footer="Swipe a row either way: left for Delete and Flag, right to complete it. Deleting is JavaScript's decision: native reports the tap and springs the row back, and the row leaves on the next commit as an animated diff — so the layout and the data source never disagree about whether it is gone."
       >
         {subtasks.map((task) => (
           <CollectionView.Row key={task.id} id={task.id}>
@@ -299,6 +299,20 @@ export default function RemindersScreen() {
                 systemImage="flag"
                 backgroundColor="#FF9500"
                 onPress={() => toggleSubtask(task.id, !task.done)}
+              />
+            </CollectionView.SwipeActions>
+            {/*
+              The other edge, which is the one Reminders itself uses for this gesture: a task is
+              completed by swiping it *right*. Ids are unique across both groups, not per edge —
+              one row has one set of handlers, so a `delete` on each side would keep only one.
+            */}
+            <CollectionView.SwipeActions edge="leading">
+              <CollectionView.SwipeAction
+                id="complete"
+                title="Complete"
+                systemImage="checkmark.circle"
+                backgroundColor="#34C759"
+                onPress={() => toggleSubtask(task.id, true)}
               />
             </CollectionView.SwipeActions>
           </CollectionView.Row>
