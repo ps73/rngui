@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 **A `Host` row could blank an unrelated screen, and the mechanism was one line of ours.** iOS parked
 each mounted child by setting `hidden` on it, and `HostCell.detach` set it again on the way back to
