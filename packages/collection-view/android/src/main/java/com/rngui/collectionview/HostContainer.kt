@@ -1,6 +1,7 @@
 package com.rngui.collectionview
 
 import android.content.Context
+import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.FrameLayout
 
@@ -43,6 +44,10 @@ class HostContainer(context: Context) : FrameLayout(context) {
   var hosted: View? = null
     private set
 
+  /** Built on demand — only a row that asked for the card ever needs one. See [applyBackground]. */
+  private var container: RowContainer? = null
+  private var cardBackground: Drawable? = null
+
   /**
    * Takes a child out of the bay and displays it.
    *
@@ -53,7 +58,11 @@ class HostContainer(context: Context) : FrameLayout(context) {
     if (hosted === child && child.parent === this) return
     release(parking)
     (child.parent as? android.view.ViewGroup)?.removeView(child)
-    child.visibility = VISIBLE
+    // Nothing here writes the child's own `visibility`. Moving it out of the bay is what makes it
+    // visible, and moving it back is what hides it — the bay is `INVISIBLE`, so its contents draw
+    // nothing regardless. Visibility is React's state to own: it is how `display: none` is
+    // expressed, and a library that assigns it is a library that can hand a permanently invisible
+    // view back to React's own recycling. That is what it cost on iOS; see `ParkingView` there.
     addView(child, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     hosted = child
   }
@@ -74,11 +83,33 @@ class HostContainer(context: Context) : FrameLayout(context) {
     if (child.parent !== this) return
 
     removeView(child)
-    child.visibility = INVISIBLE
-    // Back to the bay rather than left orphaned. React still owns this view; a view with no parent
-    // at all is one mounting transaction away from a crash, and the bay is also where the next
-    // holder to claim it will look.
+    // Back to the bay rather than left orphaned, and the move is also what hides it — see `claim`
+    // for why the child's own `visibility` is never touched. React still owns this view; a view
+    // with no parent at all is one mounting transaction away from a crash, and the bay is also
+    // where the next holder to claim it will look.
     parking.addView(child)
+  }
+
+  /**
+   * Draws the section's card behind the subtree, or clears it.
+   *
+   * Opt-in through `Host`'s `background` prop, because a hosted subtree usually brings its own
+   * surface and a card behind one that does reads as two cards with mismatched corners. The row
+   * that wants one gets the same shape, fill and state handling as a described row in the same
+   * section, which is why this borrows [RowContainer] rather than drawing anything itself.
+   */
+  fun applyBackground(position: Item.Position, listStyle: ListStyle, card: Boolean) {
+    if (!card) {
+      background = null
+      return
+    }
+    // Built on the first card bind rather than in the constructor, so a list of plain hosted rows
+    // allocates no drawables at all. `RowContainer` installs its ripple in its own constructor, and
+    // the reference is captured right after — a later `none` bind clears `background`, and this is
+    // what puts the same drawable back rather than building a second one.
+    val shape = container ?: RowContainer(this).also { container = it; cardBackground = background }
+    if (background !== cardBackground) background = cardBackground
+    shape.apply(position, listStyle, selected = false, animate = false)
   }
 
   override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {

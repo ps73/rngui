@@ -58,12 +58,12 @@ second source of truth to disagree with the children.
 
 ## Components
 
-| Structure |                                                                 |
-| --------- | --------------------------------------------------------------- |
-| `Root`    | The list itself. Props below.                                   |
-| `Section` | `id` · `header` · `footer` · `indexTitle` · `layout` · `action` |
-| `Row`     | `id` · `onPress` · `height` · `font`                            |
-| `Host`    | `id` · `height` · `onPress` — hosts a real React subtree        |
+| Structure |                                                                         |
+| --------- | ----------------------------------------------------------------------- |
+| `Root`    | The list itself. Props below.                                           |
+| `Section` | `id` · `header` · `footer` · `indexTitle` · `layout` · `action`         |
+| `Row`     | `id` · `onPress` · `height` · `font`                                    |
+| `Host`    | `id` · `height` · `background` · `onPress` — hosts a real React subtree |
 
 | Row slots     |                                                                    |
 | ------------- | ------------------------------------------------------------------ |
@@ -93,6 +93,50 @@ second source of truth to disagree with the children.
 | -------------- | ------------------------------------------------------------------------ |
 | `SwipeActions` | `edge` — `'trailing'` (default) or `'leading'`                           |
 | `SwipeAction`  | `id` · `title` · `systemImage` · `style` · `backgroundColor` · `onPress` |
+
+**Both edges.** A row takes one `SwipeActions` group per edge. `edge` defaults to `'trailing'`,
+revealed by swiping left; `'leading'` is revealed by swiping right, the same handedness on both
+platforms:
+
+```tsx
+<CollectionView.Row id={task.id}>
+  <CollectionView.Label>{task.title}</CollectionView.Label>
+  <CollectionView.SwipeActions>
+    <CollectionView.SwipeAction
+      id="delete"
+      title="Delete"
+      systemImage="trash"
+      style="destructive"
+      onPress={() => remove(task.id)}
+    />
+  </CollectionView.SwipeActions>
+  <CollectionView.SwipeActions edge="leading">
+    <CollectionView.SwipeAction
+      id="complete"
+      title="Complete"
+      systemImage="checkmark.circle"
+      backgroundColor="#34C759"
+      onPress={() => complete(task.id)}
+    />
+  </CollectionView.SwipeActions>
+</CollectionView.Row>
+```
+
+An `id` is unique per **row**, not per edge — a row's handlers are keyed by action id alone, so
+`delete` on both edges would keep only the last one registered. Nothing warns about it.
+
+Pressing an action never removes the row. Native reports the tap and springs the row back, and the
+row leaves on the next commit as an animated diff, so the layout and the data source never disagree
+about whether it is gone.
+
+**On Android, a swipe competes with the system back gesture**, and this is the failure people
+actually hit. Back is an inward drag from _either_ screen edge, so a leading swipe collides with it
+on the left exactly as a trailing swipe does on the right. The list publishes
+`systemGestureExclusionRects` for the rows that carry actions, which is what makes swiping work at
+all on a gesture-navigation device. But the platform rations that budget to **200dp per edge** and
+drops the rest, keeping the topmost rects — so on a list where every row is swipeable, rows past
+roughly the first four still lose near the screen edge. Invisible on an emulator with three-button
+navigation.
 
 An `Icon` is grey by default, not tinted — in a list these are labels for the row, and a tinted
 glyph reads as an interactive control. Give it a `background` and it becomes the platform's own
@@ -258,6 +302,20 @@ Omit `height` and the subtree measures itself: `Root` reads it with `onLayout` a
 down. State it whenever you know it, though — measuring costs one extra render, which on first mount
 is a visible settle.
 
+**The cell draws no background unless you ask for one.** Pass `background="card"` and the row takes
+the section's background, corner treatment and separators exactly as a described row in the same
+section does, theme changes included:
+
+```tsx
+<CollectionView.Host id="chart" height={160} background="card">
+  <MyChart />
+</CollectionView.Host>
+```
+
+The default is `"none"` because a hosted subtree usually brings its own surface, and a card behind
+one that does reads as two cards with mismatched corners. A row that opts out draws no separators
+either — fencing a backgroundless row between two hairlines is not opting out of anything.
+
 **A hosted row cannot recycle.** Every one is a distinct React subtree with distinct state, so there
 is no pool of interchangeable views to draw from. Prefer `Card` for anything that repeats, and for a
 long list of hosted rows, window them:
@@ -383,6 +441,7 @@ Decisions, not gaps. Each one is the platform's own idiom rather than the other'
 | Section index                   | an A–Z rail                                             | a fast-scroller thumb with a letter bubble. Android has never had a rail                                                                               |
 | `plain` pinned headers          | **iOS 26+ only** — see below                            | always pinned, via a hand-written `ItemDecoration`                                                                                                     |
 | Swipe actions                   | `UISwipeActionsConfiguration`                           | `ItemTouchHelper` revealing a tray — **off-idiom**; Material says swipe means _dismiss_, and an Android-first design should reach for an overflow menu |
+| `SwipeActions` `edge="leading"` | a full-height slab, as on the trailing edge             | the same mirrored tray — but the right-swipe competes with the system back gesture, and only the first ~200dp of swipeable rows win it                 |
 | `datePickerStyle: 'wheels'`     | a drum picker                                           | no M3 equivalent exists; falls back to the platform dialog and warns once                                                                              |
 | `datePickerMode: 'dateAndTime'` | one combined wheel                                      | two dialogs, chained — Material has no combined picker                                                                                                 |
 | `Slider`                        | `UISlider` — thin track, capsule knob                   | `com.google.android.material.slider.Slider` — M3 Expressive's thick track, gap and handle bar                                                          |
@@ -457,6 +516,13 @@ list cannot keep on its own. Use an opaque header, or pass the height yourself t
 cell that owns them. A holder releases its child only if it still owns it — during a reload the
 incoming holder binds _before_ the outgoing one is recycled, so an unguarded release blanks a row
 that is on screen and correct.
+
+The bay is a view of ours that is invisible, never React's view made invisible, and the distinction
+is load-bearing on iOS. React pools component views app-wide and never restores `hidden` on the way
+out — `prepareForRecycle` does not touch it, and the one assignment in `updateLayoutMetrics:` is
+gated on old metrics that a recycled view never has. A child handed back hidden is therefore hidden
+for the rest of the process, in whatever unrelated screen draws it next. Moving a child between the
+bay and a cell is the only thing that changes its visibility.
 
 ## License
 

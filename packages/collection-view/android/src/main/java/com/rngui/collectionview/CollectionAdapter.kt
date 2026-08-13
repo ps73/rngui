@@ -10,6 +10,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.rngui.collectionview.generated.FontSpec
+import com.rngui.collectionview.generated.HostBackground
 import com.rngui.collectionview.generated.RowKind
 
 /**
@@ -173,6 +174,14 @@ class CollectionAdapter(
         height =
           item.row.height?.let { container.context.dp(it) } ?: WRAP
       }
+
+    // Set on every bind, including to "no card": a recycled holder arrives with whatever the last
+    // row it displayed installed, and its corners belong to that row's position in its section.
+    container.applyBackground(
+      item.positionInSection,
+      listStyle,
+      card = item.row.hostBackground == HostBackground.card,
+    )
 
     val child = item.row.hostIndex?.let(hostChildAt)
     if (child == null) {

@@ -57,6 +57,7 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.sections[0].rows[0].disabled, true)
     XCTAssertEqual(decoded.sections[0].rows[0].tintColor, "Tree.sections[0].rows[0].tintColor")
     XCTAssertEqual(decoded.sections[0].rows[0].hostIndex, 33)
+    XCTAssertEqual(decoded.sections[0].rows[0].hostBackground, .card)
     XCTAssertEqual(decoded.sections[0].rows[0].height, 44)
     XCTAssertEqual(decoded.sections[0].rows[0].on, true)
     XCTAssertEqual(decoded.sections[0].rows[0].text, "Tree.sections[0].rows[0].text")

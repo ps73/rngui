@@ -187,6 +187,19 @@ enum SectionLayout: String, Decodable {
   }
 }
 
+/// Generated from `HostBackground` in tree.ts.
+enum HostBackground: String, Decodable {
+  case none
+  case card
+  /// A value this binary does not recognise.
+  case unknown
+
+  init(from decoder: any Decoder) throws {
+    let raw = try decoder.singleValueContainer().decode(String.self)
+    self = HostBackground(rawValue: raw) ?? .unknown
+  }
+}
+
 /// Generated from `ListAppearance` in tree.ts.
 enum ListAppearance: String, Decodable {
   case insetGrouped
@@ -366,6 +379,8 @@ struct RowSpec: Decodable, Equatable {
   var tintColor: String?
   /// For `host` rows: which mounted React child belongs in this cell, by mount order.
   var hostIndex: Int?
+  /// For `host` rows: whether the cell draws the section's background.
+  var hostBackground: HostBackground?
   /// Row height in points.
   ///
   /// For a `host` row this is the space the cell reserves, and it is always a number JavaScript
@@ -427,7 +442,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, sliderValue, sliderMin, sliderMax, sliderStep, sliderMinImage, sliderMaxImage, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, hostBackground, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, sliderValue, sliderMin, sliderMax, sliderStep, sliderMinImage, sliderMaxImage, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -455,6 +470,7 @@ struct RowSpec: Decodable, Equatable {
     disabled = try container.decodeIfPresent(Bool.self, forKey: .disabled)
     tintColor = try container.decodeIfPresent(String.self, forKey: .tintColor)
     hostIndex = try container.decodeIfPresent(Int.self, forKey: .hostIndex)
+    hostBackground = try container.decodeIfPresent(HostBackground.self, forKey: .hostBackground)
     height = try container.decodeIfPresent(Double.self, forKey: .height)
     on = try container.decodeIfPresent(Bool.self, forKey: .on)
     text = try container.decodeIfPresent(String.self, forKey: .text)

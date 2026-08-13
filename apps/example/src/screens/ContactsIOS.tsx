@@ -46,6 +46,18 @@ export default function ContactsScreenIOS() {
    */
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set())
 
+  /**
+   * The other edge, and the reason this screen carries one at all.
+   *
+   * A row with actions on *both* sides is the case worth demonstrating: it is what makes the two
+   * configuration providers answer from the same descriptor, and on Android what makes the row
+   * draggable in both directions rather than one. Favouriting is also the honest choice of verb —
+   * it is reversible, so the gesture can be tried twice without the row disappearing.
+   */
+  const [favourites, setFavourites] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+
   const sections = useMemo(() => {
     if (deleted.size === 0) return built
     return (
@@ -81,9 +93,10 @@ export default function ContactsScreenIOS() {
   const onRefresh = useCallback(() => {
     setRefreshing(true)
     refreshTimer.current = setTimeout(() => {
-      // Deleting is the only thing this screen changes, so undeleting is the only honest thing a
-      // refresh can restore.
+      // Deleting and favouriting are the only things this screen changes, so undoing them is the
+      // only honest thing a refresh can restore.
       setDeleted(new Set())
+      setFavourites(new Set())
       setRefreshing(false)
     }, 1200)
   }, [])
@@ -150,6 +163,14 @@ export default function ContactsScreenIOS() {
                 size={38}
               />
               <CollectionView.Label>{contact.name}</CollectionView.Label>
+              {/*
+                A badge rather than a second line: `Description` would promote this to a subtitle
+                cell and break the one-line 56pt row the avatar is sized against, whereas a badge
+                is not a row kind at all.
+              */}
+              {favourites.has(contact.id) && (
+                <CollectionView.Badge color="#FFCC00">★</CollectionView.Badge>
+              )}
 
               {/*
                 Swipe-to-delete, which is what a contacts list is *for* on iOS — and on Android is
@@ -165,6 +186,28 @@ export default function ContactsScreenIOS() {
                   style="destructive"
                   onPress={() =>
                     setDeleted((previous) => new Set(previous).add(contact.id))
+                  }
+                />
+              </CollectionView.SwipeActions>
+              {/*
+                Revealed by swiping *right*, the same handedness as iOS Mail's leading actions. The
+                id differs from the trailing one deliberately: a row's handlers are keyed by action
+                id alone, so `delete` on both edges would keep only the last one registered.
+              */}
+              <CollectionView.SwipeActions edge="leading">
+                <CollectionView.SwipeAction
+                  id="favourite"
+                  title={
+                    favourites.has(contact.id) ? 'Unfavourite' : 'Favourite'
+                  }
+                  systemImage="star.fill"
+                  backgroundColor="#FFCC00"
+                  onPress={() =>
+                    setFavourites((previous) => {
+                      const next = new Set(previous)
+                      if (!next.delete(contact.id)) next.add(contact.id)
+                      return next
+                    })
                   }
                 />
               </CollectionView.SwipeActions>

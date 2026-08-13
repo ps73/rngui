@@ -62,6 +62,18 @@ export default function ContactsScreenAndroid() {
    */
   const [deleted, setDeleted] = useState<ReadonlySet<string>>(() => new Set())
 
+  /**
+   * The other edge, and the reason this screen carries one at all.
+   *
+   * A row with actions on *both* sides is what makes `ItemTouchHelper` movable left *and* right,
+   * and what makes the tray pick its actions from the sign of the drag rather than always
+   * answering with the trailing set. Favouriting is reversible, so the gesture can be tried twice
+   * without the row disappearing.
+   */
+  const [favourites, setFavourites] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
+
   // Built once, and the avatars derived with it. Deriving initials and a colour per render would
   // put 2,000 string operations on every commit, which is exactly the cost this screen measures.
   const built = useMemo(() => {
@@ -111,6 +123,7 @@ export default function ContactsScreenAndroid() {
     setRefreshing(true)
     refreshTimer.current = setTimeout(() => {
       setDeleted(new Set())
+      setFavourites(new Set())
       setRefreshing(false)
     }, 1200)
   }, [])
@@ -157,6 +170,13 @@ export default function ContactsScreenAndroid() {
                 background={contact.color}
               />
               <CollectionView.Label>{contact.name}</CollectionView.Label>
+              {/*
+                A badge rather than a second line: `Description` would promote this to a subtitle
+                cell and break the one-line 56dp item the avatar is sized against.
+              */}
+              {favourites.has(contact.id) && (
+                <CollectionView.Badge color="#FFCC00">★</CollectionView.Badge>
+              )}
 
               <CollectionView.SwipeActions>
                 <CollectionView.SwipeAction
@@ -166,6 +186,33 @@ export default function ContactsScreenAndroid() {
                   style="destructive"
                   onPress={() =>
                     setDeleted((previous) => new Set(previous).add(contact.id))
+                  }
+                />
+              </CollectionView.SwipeActions>
+              {/*
+                Revealed by swiping *right*, the same handedness as iOS. Worth trying on a
+                gesture-navigation device rather than three-button: a right-swipe is the system's
+                own back gesture, and only the rows covered by `systemGestureExclusionRects` win it
+                — a budget Android rations to 200dp per edge, so the rows further down this list
+                still lose near the screen edge.
+
+                The id differs from the trailing one deliberately: a row's handlers are keyed by
+                action id alone, so `delete` on both edges would keep only the last one registered.
+              */}
+              <CollectionView.SwipeActions edge="leading">
+                <CollectionView.SwipeAction
+                  id="favourite"
+                  title={
+                    favourites.has(contact.id) ? 'Unfavourite' : 'Favourite'
+                  }
+                  systemImage="star.fill"
+                  backgroundColor="#FFCC00"
+                  onPress={() =>
+                    setFavourites((previous) => {
+                      const next = new Set(previous)
+                      if (!next.delete(contact.id)) next.add(contact.id)
+                      return next
+                    })
                   }
                 />
               </CollectionView.SwipeActions>

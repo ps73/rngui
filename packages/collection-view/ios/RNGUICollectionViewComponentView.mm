@@ -264,8 +264,8 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
     // and "hard" header backgrounds) and tab-bar scroll-to-top.
     //
     // Assigning it as `contentView` puts the host's container at index 0. Mounted React
-    // children are parked inside that container rather than here, so they land at index 1 and
-    // above of a view that is itself index 0 — the chain stays intact. Note the inherited
+    // children are parked in a bay inside that container rather than here, so they land two
+    // levels below a view that is itself index 0 — the chain stays intact. Note the inherited
     // `mountChildComponentView:` would have inserted them into *this* view at the index React
     // chose, frequently 0, silently breaking every one of those behaviours.
     self.contentView = _host.containerView;
@@ -467,16 +467,36 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
  * exactly how `react-native-screens` moves children into view controllers and navigation
  * bars.
  *
- * The child is parked in the container, hidden, until a cell claims it.
+ * The child is parked in an invisible bay until a cell claims it. Note what is *not* here: nothing
+ * touches the child's own `hidden`. See `ParkingView` in `RNGUICollectionViewHost.swift`.
  */
 - (void)mountChildComponentView:(UIView<RCTComponentViewProtocol> *)childComponentView
                           index:(NSInteger)index
 {
+#if DEBUG
+  // **The tripwire for a whole class of invisible bug, and it costs a branch.**
+  //
+  // Fabric hands over a view that was either just created or just dequeued from
+  // `RCTComponentViewRegistry`'s per-`ComponentHandle` pool. A pooled one has been through
+  // `prepareForRecycle`, which resets props, event emitter and layout metrics — and not `hidden`.
+  // So arriving hidden means *some* component view released a view into that app-wide pool in a
+  // state it had no business leaving it in, and every surface that dequeues it from here on renders
+  // an invisible view with no error, no redbox and no clue as to the origin. This library was that
+  // culprit until the parking bay landed.
+  //
+  // A log rather than `RCTAssert`: nothing else here escalates a diagnostic to a redbox, and the
+  // check is honest about foreign culprits — it fires for any library that does this, not only ours.
+  if (childComponentView.hidden) {
+    NSLog(@"[@rngui/collection-view] mounted a child that arrived hidden (%@). Something released "
+          @"it into React's recycle pool without restoring `hidden`.",
+          NSStringFromClass(childComponentView.class));
+  }
+#endif
+
   NSInteger clamped = MIN(MAX(index, (NSInteger)0), (NSInteger)_hostedViews.count);
   [_hostedViews insertObject:childComponentView atIndex:(NSUInteger)clamped];
 
-  childComponentView.hidden = YES;
-  [_host.containerView addSubview:childComponentView];
+  [_host parkHostedView:childComponentView];
 
   [_host setHostedViews:_hostedViews];
 }
@@ -499,6 +519,37 @@ static NSString *RNGUIColorSchemeString(RNGUICollectionViewColorScheme scheme)
 
   [childComponentView removeFromSuperview];
   [_host setHostedViews:_hostedViews];
+}
+
+/**
+ * The teardown hook that actually runs for this class — and `prepareForRecycle` is not it.
+ *
+ * `+shouldBeRecycled` returns `NO` (see above), and `RCTComponentViewRegistry`'s enqueue branches
+ * on exactly that: a view that declines recycling is sent `-invalidate` and returned, never
+ * reaching `prepareForRecycle`. Implementing that instead would compile, read as a fix, and never
+ * execute a line — which is worth stating here, because it is the natural place to reach for and
+ * has already been proposed once from the outside.
+ *
+ * `-invalidate` is declared in `RCTComponentViewProtocol` with a no-op default, so `super` costs
+ * nothing and keeps the call correct if `RCTViewComponentView` ever grows an implementation.
+ */
+- (void)invalidate
+{
+#if DEBUG
+  // React removes a subtree's children before it deletes their parent, so by now this array is
+  // normally empty and the sweep in `-teardown` is a guard rather than a path. A non-empty one
+  // means a child reached the recycle pool without passing through `unmountChildComponentView:`,
+  // which is the other way this component could poison it.
+  if (_hostedViews.count != 0) {
+    NSLog(@"[@rngui/collection-view] destroyed while still holding %lu hosted child(ren).",
+          (unsigned long)_hostedViews.count);
+  }
+#endif
+
+  [_host teardown];
+  [_hostedViews removeAllObjects];
+
+  [super invalidate];
 }
 
 /**

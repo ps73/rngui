@@ -265,6 +265,8 @@ export interface RowSpec {
    * For `host` rows: which mounted React child belongs in this cell, by mount order.
    */
   hostIndex?: IntValue
+  /** For `host` rows: whether the cell draws the section's background. */
+  hostBackground?: HostBackground
   /**
    * Row height in points.
    *
@@ -494,6 +496,17 @@ export interface GradientSpec {
   /** Degrees clockwise from top-to-bottom. `0` is vertical, `90` runs left to right. */
   angle?: number
 }
+
+/**
+ * Whether a `host` row's cell draws the section's background.
+ *
+ * `none` is the default, and deliberately: a hosted subtree is arbitrary React, and the common
+ * reason to reach for `Host` at all is content that already draws its own surface. Putting a
+ * grouped card behind that produces two cards with different corner radii, one peeking out from
+ * behind the other — a worse default than none, and one a caller cannot switch off after the fact
+ * if it is unconditional.
+ */
+export type HostBackground = 'none' | 'card'
 
 /** Mirrors `UICollectionLayoutListConfiguration.Appearance`. */
 export type ListAppearance = 'insetGrouped' | 'grouped' | 'plain'
