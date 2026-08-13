@@ -23,15 +23,18 @@ public final class RNGUICollectionViewHost: NSObject {
    *
    * A container rather than the collection view itself, for three reasons. The A–Z section-index
    * scrubber will have to be a *sibling* of the collection view, since it must not scroll with
-   * the content; hosted React views are parked here, hidden, while no cell is displaying them;
-   * and `overrideUserInterfaceStyle` is set here so it propagates to everything below.
+   * the content; the parking bay holding hosted React views is a sibling for the same reason; and
+   * `overrideUserInterfaceStyle` is set here so it propagates to everything below.
    *
    * The collection view is added first and must stay at subview index 0 — see the note in
-   * `RNGUICollectionViewComponentView.mm`. Parked hosted views therefore land at index 1 and
+   * `RNGUICollectionViewComponentView.mm`. The scrubber and the bay therefore land at index 1 and
    * above, which keeps the `subviews[0]` chain that react-native-screens walks intact.
    */
   @objc public var containerView: UIView { container }
   private let container = ContainerView()
+
+  /// Where a mounted React child waits until a cell claims it. See `ParkingView`.
+  private let parkingView = ParkingView(frame: .zero)
 
   @objc public let collectionView: UICollectionView
 
@@ -291,6 +294,11 @@ public final class RNGUICollectionViewHost: NSObject {
       self?.scrollToSection(section)
     }
 
+    // Also after the collection view, for the same `subviews[0]` reason. Hosted children land one
+    // level deeper than they used to — inside the bay rather than loose in the container — which
+    // strengthens that chain rather than weakening it.
+    container.addSubview(parkingView)
+
     // Not `collectionView.refreshControl = refreshControl` — see the property's own note. Only the
     // target is wired here; the control is attached when a caller asks for one.
     refreshControl.addTarget(
@@ -500,6 +508,20 @@ public final class RNGUICollectionViewHost: NSObject {
         )
         separatorConfiguration.color = separator
         configuration.separatorConfiguration = separatorConfiguration
+      }
+
+      // **A hosted row that declined the card draws no hairlines either, and this handler is the
+      // only supported way to say so.** Separators belong to the list layout rather than to the
+      // cell, so a `UICollectionViewListCell` placed in a list section is fenced by them whether or
+      // not it wants to be — and opting a row out of the background while leaving it bracketed by
+      // two lines is not opting out of anything. The windowing example is 200 hosted rows in one
+      // section; without this it would gain 199 hairlines it never had.
+      configuration.itemSeparatorHandler = { [weak self] indexPath, proposed in
+        guard let self, self.isBackgroundlessHost(at: indexPath) else { return proposed }
+        var suppressed = proposed
+        suppressed.topSeparatorVisibility = .hidden
+        suppressed.bottomSeparatorVisibility = .hidden
+        return suppressed
       }
 
       let layoutSection = NSCollectionLayoutSection.list(
@@ -1216,6 +1238,24 @@ public final class RNGUICollectionViewHost: NSObject {
    * source disagreeing, which is a crash rather than a glitch. Springing the row back and letting
    * the next snapshot animate it away is both honest and what a declarative list should do.
    */
+  /**
+   * A `host` row that did not ask for the section's background.
+   *
+   * Resolved through the data source rather than through `sections`, for the same reason
+   * `swipeActions` does it: the layout asks about index paths mid-update, when the two can disagree.
+   * The data source is implicitly unwrapped and the layout outlives no part of this object, but the
+   * separator handler runs on every list layout pass — including ones that can precede the data
+   * source existing at all — so this reads it as the optional it really is.
+   */
+  private func isBackgroundlessHost(at indexPath: IndexPath) -> Bool {
+    guard
+      let dataSource,
+      let rowId = dataSource.itemIdentifier(for: indexPath),
+      let row = rowsById[rowId]
+    else { return false }
+    return row.kind == .host && row.hostBackground != .card
+  }
+
   private func swipeActions(
     at indexPath: IndexPath,
     trailing: Bool
@@ -1254,11 +1294,23 @@ public final class RNGUICollectionViewHost: NSObject {
       guard let self else { return }
       cell.setHeight(CGFloat(row.height ?? 0))
 
+      // **Conditional in both directions, which is the part that is easy to get wrong.** A reused
+      // cell arrives holding whatever the last row it displayed installed, so the default case has
+      // to actively undo the card rather than merely decline to apply one. `.clear()` rather than
+      // `nil`: nil would hand the job back to UIKit, which for a list cell means the grouped card
+      // is exactly what comes back.
+      if row.hostBackground == .card {
+        self.applyBackground(to: cell, row: row)
+      } else {
+        cell.configurationUpdateHandler = nil
+        cell.backgroundConfiguration = .clear()
+      }
+
       // The child may not have mounted yet — Fabric can deliver props before it delivers
       // children — so a missing view here is expected rather than an error. `setHostedViews`
       // reconfigures these rows once the children arrive.
       if let index = row.hostIndex, let view = self.hostedViews[safe: index] {
-        cell.attach(view, parkingView: self.container)
+        cell.attach(view, parkingView: self.parkingView)
       } else {
         cell.detach()
       }
@@ -2294,6 +2346,16 @@ public final class RNGUICollectionViewHost: NSObject {
     dataSource.apply(snapshot, animatingDifferences: false)
   }
 
+  /**
+   * Parks a freshly mounted child until a cell claims it.
+   *
+   * The bay is exposed as a method rather than as a property so that the child's visibility is
+   * never something a caller has to remember to manage — putting it here is the whole contract.
+   */
+  @objc public func parkHostedView(_ view: UIView) {
+    parkingView.addSubview(view)
+  }
+
   /// Called before React unmounts a child, so whichever cell holds it lets go first.
   @objc public func releaseHostedView(_ view: UIView) {
     // Only the cell actually displaying this one. Detaching every visible host cell — which is what
@@ -2303,9 +2365,82 @@ public final class RNGUICollectionViewHost: NSObject {
       guard let host = cell as? HostCell, host.hostedView === view else { continue }
       host.detach()
     }
-    if view.superview === container {
+    if view.superview === parkingView {
       view.removeFromSuperview()
     }
+  }
+
+  // MARK: - Teardown
+
+  /**
+   * Hands React's views back and stops everything this object had running, at a point React
+   * chooses rather than one ARC does.
+   *
+   * **This is not a leak fix, and an earlier draft of it claimed to be one.** The claim was that
+   * `UITapGestureRecognizer` retains its target and so closed a cycle through the collection view.
+   * It does not: a recogniser's target-action storage is not a strong edge, the same graph
+   * deallocates without any help, and a `deinit` probe on this class fires on the first pop. There
+   * was nothing to break. The reason to keep this method is narrower and real — the hosted-child
+   * sweep below is the same invariant `ParkingView` exists to hold, and a callback that can still
+   * fire for a destroyed surface is worth silencing at a known moment rather than an arbitrary one.
+   *
+   * Called from the component view's `-invalidate`, which is the only teardown hook React runs for
+   * it — see the note there for why it is not `prepareForRecycle`.
+   *
+   * Two things this deliberately does **not** do. It does not re-enter the data source: an
+   * `apply`, `reloadData` or `performBatchUpdates` here would run UIKit mutation from inside
+   * `RCTPerformMountInstructions`, and the reconfigure calls straight back into the host
+   * registration, which re-parks children into the bay this just emptied. And it does not write
+   * properties on children it does not still own — the bay's own subviews are the ownership test,
+   * which is why the loop reads from there rather than from `hostedViews`.
+   */
+  @objc public func teardown() {
+    // React's views leave before anything else is released out from under them. Cells the layout
+    // already discarded are not in `visibleCells`, but their `detach()` ran at `prepareForReuse`
+    // and put the child back in the bay, so the sweep below covers them.
+    for case let cell as HostCell in collectionView.visibleCells {
+      cell.detach()
+    }
+    for view in parkingView.subviews {
+      view.removeFromSuperview()
+    }
+    hostedViews = []
+
+    // Observers, before the object graph starts coming apart under them.
+    contentSizeObservation?.invalidate()
+    contentSizeObservation = nil
+    keyboardObserver?.onChange = nil
+    collectionView.delegate = nil
+    refreshControl.removeTarget(self, action: nil, for: .valueChanged)
+    collectionView.refreshControl = nil
+
+    // Callbacks into views that outlive this object only for as long as UIKit holds them.
+    container.onMovedToWindow = nil
+    container.onDidLayout = nil
+    container.onInterfaceStyleChange = nil
+    sectionIndexBar.onSelect = nil
+
+    // The event blocks the component view installed. They read the Fabric emitter weakly and cannot
+    // keep anything alive, but a block that can still fire after teardown is a block that can
+    // dispatch an event for a surface that no longer exists.
+    onVisibleRangeChange = nil
+    onRowPress = nil
+    onSwitchChange = nil
+    onTextChange = nil
+    onFocusChange = nil
+    onDateChange = nil
+    onSliderChange = nil
+    onSliderCommit = nil
+    onMenuSelect = nil
+    onSwipeAction = nil
+    onSectionAction = nil
+    onScroll = nil
+    onScrollBeginDrag = nil
+    onScrollEndDrag = nil
+    onMomentumScrollBegin = nil
+    onMomentumScrollEnd = nil
+    onContentSizeChange = nil
+    onRefresh = nil
   }
 }
 
@@ -2479,6 +2614,42 @@ final class ContainerView: UIView {
       onInterfaceStyleChange?()
     }
   }
+}
+
+/**
+ * Where a mounted React child waits until a cell claims it.
+ *
+ * **A view of ours that is invisible, rather than React's view made invisible — and that
+ * distinction is the entire reason this class exists.** `isHidden` on a hosted child is state this
+ * library does not own, and React never takes it back: `RCTViewComponentView.prepareForRecycle`
+ * resets props, event emitter and layout metrics and does not touch `hidden`, and the one place
+ * that assigns it — `UIView+ComponentViewProtocol`'s `updateLayoutMetrics:` — only does so when the
+ * *old* metrics compare equal to `EmptyLayoutMetrics`, which a recycled view never has because
+ * `RCTViewComponentView` substitutes its own stored metrics for the ones the mounting layer passed.
+ * So a child handed back hidden stays hidden for the life of the process, and React's recycle pool
+ * is app-wide: the next screen to mount a plain `View` gets ours, renders nothing, and reports no
+ * error anywhere near here. One `Host` row was enough to blank an unrelated screen.
+ *
+ * Hidden *and* zero-sized *and* clipping, all three. Hidden is what stops it drawing and takes what
+ * it holds out of the accessibility tree; the other two keep that true if anything ever un-hides it.
+ * Android's `ParkingView` is the same view for the same reason — see `HostContainer.kt`.
+ */
+final class ParkingView: UIView {
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    isHidden = true
+    clipsToBounds = true
+    isUserInteractionEnabled = false
+  }
+
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) is not used — this view is only created in code")
+  }
+
+  /// Fabric laid these subtrees out already and assigns their frames directly; a parked child keeps
+  /// those frames until a cell takes it. Laying them out against a zero-sized bay would discard the
+  /// measurement the cell is about to rely on.
+  override func layoutSubviews() {}
 }
 
 extension Array {

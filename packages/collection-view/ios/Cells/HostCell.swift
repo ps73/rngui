@@ -16,8 +16,15 @@ import UIKit
  * What this cannot do is recycle its content. Every hosted row is a distinct React subtree
  * with distinct state, so there is no pool of interchangeable views to draw from — hence
  * `detach()` returning the view to a parking bay rather than dropping it.
+ *
+ * A `UICollectionViewListCell` rather than a plain `UICollectionViewCell`, so that a hosted row can
+ * take the same grouped card as the described rows around it when it asks for one. A plain cell
+ * cannot: `UIBackgroundConfiguration` carries a corner radius but no masked-corners, so the
+ * first-and-last-in-section treatment is not expressible through it — it comes from the list cell
+ * reading the layout's own attributes. The row asks with `Host`'s `background` prop, and asking is
+ * opt-in; see `makeHostRegistration` for what the two cases install.
  */
-final class HostCell: UICollectionViewCell {
+final class HostCell: UICollectionViewListCell {
   private weak var hosted: UIView?
   private weak var parkingView: UIView?
   private var heightConstraint: NSLayoutConstraint?
@@ -54,8 +61,10 @@ final class HostCell: UICollectionViewCell {
     #endif
 
     self.parkingView = parkingView
+    // Moving it out of the bay is the only thing that makes it visible, and moving it back is the
+    // only thing that hides it again. Nothing here writes `isHidden` on a view React owns — see
+    // `ParkingView` for what that cost the last time it did.
     view.removeFromSuperview()
-    view.isHidden = false
     // Fabric has already laid this subtree out and assigns frames directly, so the view must
     // stay in the autoresizing world rather than being handed to Auto Layout.
     view.translatesAutoresizingMaskIntoConstraints = true
@@ -76,18 +85,21 @@ final class HostCell: UICollectionViewCell {
      *
      * During a reload UIKit configures the *replacement* cell before recycling the outgoing one, so
      * by the time `prepareForReuse` runs here the view has already been claimed by the cell that
-     * replaced this one. Hiding it then blanks a row that is on screen and correct — which is
+     * replaced this one. Reparenting it then blanks a row that is on screen and correct — which is
      * exactly what a theme change did: `reloadSections` re-created every cell, and every hosted row
      * whose identity survived went empty while the one that had just been *inserted* was fine.
      */
     guard view.superview === contentView else { return }
 
-    view.isHidden = true
+    // Returned to the parking bay rather than left orphaned, and the move is also what hides it:
+    // the bay is invisible, so a parked child draws nothing without this cell ever writing to a
+    // property React owns. The bay is where the next cell to claim it will look.
+    //
+    // Un-parented first rather than relying on `addSubview` to reparent, so that a bay which has
+    // already gone — the weak reference is nil only while the host is being torn down — still
+    // leaves the child out of a dead cell. React asserts on recycling a view that still has a
+    // superview; orphaned is the recoverable half of that choice.
     view.removeFromSuperview()
-    // Returned to the parking bay rather than left orphaned. React still owns this view and
-    // will unmount it on its own schedule; a view with no superview at all is one mounting
-    // transaction away from an assertion, and the bay is also where the next cell to claim
-    // it will look.
     parkingView?.addSubview(view)
   }
 

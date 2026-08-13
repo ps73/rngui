@@ -5,7 +5,9 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.view.View
 import androidx.recyclerview.widget.RecyclerView
+import com.rngui.collectionview.generated.HostBackground
 import com.rngui.collectionview.generated.ListAppearance
+import com.rngui.collectionview.generated.RowKind
 
 /**
  * Card insets, section spacing and separators.
@@ -89,10 +91,19 @@ class GroupDecoration(private var style: ListStyle) : RecyclerView.ItemDecoratio
 
     for (index in 0 until parent.childCount) {
       val child = parent.getChildAt(index)
-      val item = adapter.itemAtOrNull(parent.getChildAdapterPosition(child)) as? Item.Row ?: continue
+      val position = parent.getChildAdapterPosition(child)
+      val item = adapter.itemAtOrNull(position) as? Item.Row ?: continue
       // Only *within* a group. The last row of a section has nothing below it that belongs to the
       // same card, and a line there would draw across the gap.
       if (item.positionInSection.isLast) continue
+
+      // A hosted row that declined the card declines the hairlines on *both* of its edges, which
+      // is why the row below is asked about too: each row draws only its own bottom line, so the
+      // separator above a hosted row belongs to its predecessor. Fencing a row that paints no
+      // background between two lines is not opting out of anything. iOS says the same thing in one
+      // step, through `itemSeparatorHandler`'s top and bottom visibility.
+      if (item.isBackgroundlessHost) continue
+      if ((adapter.itemAtOrNull(position + 1) as? Item.Row)?.isBackgroundlessHost == true) continue
 
       val left = (inset + style.separatorInsetPx).toFloat()
       val right = (parent.width - inset).toFloat()
@@ -107,3 +118,7 @@ private val Item.Position.isFirst: Boolean
 
 private val Item.Position.isLast: Boolean
   get() = this == Item.Position.last || this == Item.Position.only
+
+/** A `host` row that did not ask for the section's card, and so draws no separators either. */
+private val Item.Row.isBackgroundlessHost: Boolean
+  get() = row.kind == RowKind.host && row.hostBackground != HostBackground.card

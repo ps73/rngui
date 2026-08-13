@@ -70,6 +70,7 @@ class TreeTypesTest {
     assertEquals(true, decoded.sections.get(0).rows.get(0).disabled)
     assertEquals("Tree.sections[0].rows[0].tintColor", decoded.sections.get(0).rows.get(0).tintColor)
     assertEquals(33, decoded.sections.get(0).rows.get(0).hostIndex)
+    assertEquals(HostBackground.card, decoded.sections.get(0).rows.get(0).hostBackground)
     assertEquals(44.0, decoded.sections.get(0).rows.get(0).height)
     assertEquals(true, decoded.sections.get(0).rows.get(0).on)
     assertEquals("Tree.sections[0].rows[0].text", decoded.sections.get(0).rows.get(0).text)

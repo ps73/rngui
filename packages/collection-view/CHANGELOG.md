@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+**A `Host` row could blank an unrelated screen, and the mechanism was one line of ours.** iOS parked
+each mounted child by setting `hidden` on it, and `HostCell.detach` set it again on the way back to
+the bay — but nothing ever cleared it. React never clears it either: `prepareForRecycle` resets
+props, event emitter and layout metrics and leaves `hidden` alone, and the one place that assigns it
+(`UIView+ComponentViewProtocol`'s `updateLayoutMetrics:`) is gated on the old metrics comparing equal
+to `EmptyLayoutMetrics`, which a recycled view never has because `RCTViewComponentView` substitutes
+its own stored metrics. So every hosted child this library ever unmounted went back into React's
+**app-wide** recycle pool permanently invisible, and the next screen to mount a plain `View` drew one
+of ours and rendered nothing. No exception, no redbox: the first mount always worked, later ones did
+not, and the blame landed on whatever unrelated screen happened to draw the poisoned view.
+
+The fix is structural rather than a repair. iOS now has the parking bay Android always had — a view
+of ours that is invisible, zero-sized and clipping — and nothing in the library writes `isHidden`,
+`visibility` or any other property on a view React owns. Moving a child between the bay and a cell is
+the only thing that changes whether it draws. A `#if DEBUG` check in `mountChildComponentView:` logs
+any child that arrives hidden, which turns this whole class of bug into one line naming the screen
+that caused it. Android's two redundant `visibility` writes went with it.
+
+Worth stating because it is the natural fix and it would not have worked: implementing
+`prepareForRecycle` here is dead code. `+shouldBeRecycled` returns `NO`, and `RCTComponentViewRegistry`
+branches on exactly that — a view that declines recycling is sent `-invalidate` and returned, never
+reaching `prepareForRecycle`.
+
+**Teardown now happens when React says so, not whenever ARC gets there.** The component view
+implements `-invalidate` — the hook React actually runs for a class that declines recycling — which
+returns every hosted child, drops the KVO and keyboard observers, and nils the event blocks. The
+hosted-child sweep is the same invariant the parking bay exists to hold, one level up: nothing should
+still be parented into a collection view React has finished with. A `#if DEBUG` check reports any
+child still held at that point, which would mean it reached the recycle pool without passing through
+`unmountChildComponentView:`.
+
+No leak is being claimed here, and an earlier draft of this entry claimed one. It said
+`UITapGestureRecognizer` retains its target and so closed a cycle through the collection view. It does
+not — a recogniser's target-action storage is not a strong edge, the same graph deallocates unaided,
+and a `deinit` probe on the host fires on the first pop. Thanks to review for catching it.
+
+**A hosted row can take the section's card.** `Host` gains `background`, defaulting to `"none"`.
+`"card"` gives the row the same background, corner treatment and separators as a described row in the
+same section, on both platforms — `HostCell` is a `UICollectionViewListCell` now, because a
+`UIBackgroundConfiguration` carries a corner radius but no masked corners, so first-and-last-in-section
+rounding is not expressible without one. Opt-in rather than default: a hosted subtree usually draws
+its own surface, and a card behind one that does is two cards with mismatched corners. A row that
+declines the card declines the separators with it.
+
 **Leading swipe actions, documented.** No behaviour change: `SwipeActions` has taken
 `edge="leading"` since 0.1.0 and both backends have always honoured it. But the README said so in
 one table cell, no example used it, and it was reported as missing — which is a documentation bug

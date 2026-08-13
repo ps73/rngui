@@ -118,7 +118,13 @@ export default function HealthScreen() {
         header="This Week"
         footer="A Host row: a real React Native view reparented into the cell. Correct for a chart, which is one of a kind — and the wrong tool for the cards above, which repeat."
       >
-        <CollectionView.Host id="chart-host" height={160}>
+        {/*
+          `background="card"` because the chart draws no surface of its own, so without it the row
+          sits on the page background while its section header and footer describe a card that is
+          not there. The opposite case is the chip strips on the Custom screen, which are designed
+          to float — hence the opt-in rather than a default.
+        */}
+        <CollectionView.Host id="chart-host" height={160} background="card">
           <Chart />
         </CollectionView.Host>
       </CollectionView.Section>

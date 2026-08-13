@@ -39,6 +39,7 @@
           "disabled": true,
           "tintColor": "Tree.sections[0].rows[0].tintColor",
           "hostIndex": 33,
+          "hostBackground": "card",
           "height": 44,
           "on": true,
           "text": "Tree.sections[0].rows[0].text",

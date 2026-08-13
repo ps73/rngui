@@ -58,12 +58,12 @@ second source of truth to disagree with the children.
 
 ## Components
 
-| Structure |                                                                 |
-| --------- | --------------------------------------------------------------- |
-| `Root`    | The list itself. Props below.                                   |
-| `Section` | `id` · `header` · `footer` · `indexTitle` · `layout` · `action` |
-| `Row`     | `id` · `onPress` · `height` · `font`                            |
-| `Host`    | `id` · `height` · `onPress` — hosts a real React subtree        |
+| Structure |                                                                         |
+| --------- | ----------------------------------------------------------------------- |
+| `Root`    | The list itself. Props below.                                           |
+| `Section` | `id` · `header` · `footer` · `indexTitle` · `layout` · `action`         |
+| `Row`     | `id` · `onPress` · `height` · `font`                                    |
+| `Host`    | `id` · `height` · `background` · `onPress` — hosts a real React subtree |
 
 | Row slots     |                                                                    |
 | ------------- | ------------------------------------------------------------------ |
@@ -302,6 +302,20 @@ Omit `height` and the subtree measures itself: `Root` reads it with `onLayout` a
 down. State it whenever you know it, though — measuring costs one extra render, which on first mount
 is a visible settle.
 
+**The cell draws no background unless you ask for one.** Pass `background="card"` and the row takes
+the section's background, corner treatment and separators exactly as a described row in the same
+section does, theme changes included:
+
+```tsx
+<CollectionView.Host id="chart" height={160} background="card">
+  <MyChart />
+</CollectionView.Host>
+```
+
+The default is `"none"` because a hosted subtree usually brings its own surface, and a card behind
+one that does reads as two cards with mismatched corners. A row that opts out draws no separators
+either — fencing a backgroundless row between two hairlines is not opting out of anything.
+
 **A hosted row cannot recycle.** Every one is a distinct React subtree with distinct state, so there
 is no pool of interchangeable views to draw from. Prefer `Card` for anything that repeats, and for a
 long list of hosted rows, window them:
@@ -502,6 +516,13 @@ list cannot keep on its own. Use an opaque header, or pass the height yourself t
 cell that owns them. A holder releases its child only if it still owns it — during a reload the
 incoming holder binds _before_ the outgoing one is recycled, so an unguarded release blanks a row
 that is on screen and correct.
+
+The bay is a view of ours that is invisible, never React's view made invisible, and the distinction
+is load-bearing on iOS. React pools component views app-wide and never restores `hidden` on the way
+out — `prepareForRecycle` does not touch it, and the one assignment in `updateLayoutMetrics:` is
+gated on old metrics that a recycled view never has. A child handed back hidden is therefore hidden
+for the rest of the process, in whatever unrelated screen draws it next. Moving a child between the
+bay and a cell is the only thing that changes its visibility.
 
 ## License
 

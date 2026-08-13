@@ -6,6 +6,7 @@ import type {
   ButtonRole,
   DatePickerMode,
   DatePickerStyle,
+  HostBackground,
   KeyboardType,
   MenuItemSpec,
   ReturnKeyType,
@@ -99,6 +100,15 @@ export interface HostProps extends Children {
    * that.
    */
   height?: number
+  /**
+   * Whether the cell draws the section's background behind the subtree.
+   *
+   * Defaults to `'none'` — a hosted subtree usually brings its own surface, and a card behind one
+   * that does shows up as two cards with mismatched corners. Pass `'card'` for content that has
+   * none of its own, and the row takes the same background, corner treatment and separators as a
+   * described row in the same section, theme changes included.
+   */
+  background?: HostBackground
   onPress?: () => void
 }
 /**

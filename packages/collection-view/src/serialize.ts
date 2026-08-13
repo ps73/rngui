@@ -13,6 +13,7 @@ import type {
   CardProps,
   DatePickerProps,
   DescriptionProps,
+  HostProps,
   IconProps,
   MenuProps,
   RowProps,
@@ -255,8 +256,12 @@ function serializeRow(
   if (props.font != null) row.font = props.font
 
   if (isHost) {
+    const hostProps = element.props as unknown as HostProps
     row.kind = 'host'
     row.hostIndex = hosted.length
+    // Omitted when it is the default, like every other optional field here — an absent key is one
+    // less thing in a tree string that is already the largest thing crossing the bridge.
+    if (hostProps.background != null) row.hostBackground = hostProps.background
     // A stated height wins outright; otherwise use whatever the last measurement found, and the
     // placeholder until there has been one. `row.height` is never left unset for a host row —
     // native has nothing to fall back on.

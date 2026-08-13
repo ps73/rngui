@@ -235,6 +235,23 @@ enum class SectionLayout(val raw: String) {
 }
 
 /**
+ * Generated from `HostBackground` in tree.ts.
+ */
+enum class HostBackground(val raw: String) {
+  none("none"),
+  card("card"),
+
+  /** A value this binary does not recognise. */
+  unknown("");
+
+  companion object {
+    private val byRaw = entries.associateBy { it.raw }
+
+    fun from(raw: String): HostBackground = byRaw[raw] ?: unknown
+  }
+}
+
+/**
  * Generated from `ListAppearance` in tree.ts.
  */
 enum class ListAppearance(val raw: String) {
@@ -458,6 +475,10 @@ data class RowSpec(
    */
   val hostIndex: Int? = null,
   /**
+   * For `host` rows: whether the cell draws the section's background.
+   */
+  val hostBackground: HostBackground? = null,
+  /**
    * Row height in points.
    *
    * For a `host` row this is the space the cell reserves, and it is always a number JavaScript
@@ -566,6 +587,7 @@ data class RowSpec(
         disabled = json.boolean("disabled"),
         tintColor = json.string("tintColor"),
         hostIndex = json.int("hostIndex"),
+        hostBackground = json.string("hostBackground")?.let(HostBackground::from),
         height = json.double("height"),
         on = json.boolean("on"),
         text = json.string("text"),

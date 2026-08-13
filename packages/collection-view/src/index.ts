@@ -66,6 +66,7 @@ export type {
   GradientSpec,
   SectionLayout,
   HeaderBackgroundStyle,
+  HostBackground,
   KeyboardType,
   AndroidListStyle,
   ListAppearance,
