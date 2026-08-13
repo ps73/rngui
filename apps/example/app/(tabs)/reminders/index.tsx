@@ -276,7 +276,7 @@ export default function RemindersScreen() {
       <CollectionView.Section
         id="subtasks"
         header="Subtasks"
-        footer="Swipe a row either way: left for Delete and Flag, right to complete it. Deleting is JavaScript's decision: native reports the tap and springs the row back, and the row leaves on the next commit as an animated diff — so the layout and the data source never disagree about whether it is gone."
+        footer="Swipe a row either way: left for Delete and Flag, right to complete it — or, on a row that is already done, to undo it. Deleting is JavaScript's decision: native reports the tap and springs the row back, and the row leaves on the next commit as an animated diff — so the layout and the data source never disagree about whether it is gone."
       >
         {subtasks.map((task) => (
           <CollectionView.Row key={task.id} id={task.id}>
@@ -307,12 +307,19 @@ export default function RemindersScreen() {
               one row has one set of handlers, so a `delete` on each side would keep only one.
             */}
             <CollectionView.SwipeActions edge="leading">
+              {/*
+                Reversible, and it reads its own row to decide. An action that always wrote `true`
+                would still be *offered* on a row that is already complete, and doing nothing is the
+                one outcome a swipe should never have.
+              */}
               <CollectionView.SwipeAction
                 id="complete"
-                title="Complete"
-                systemImage="checkmark.circle"
-                backgroundColor="#34C759"
-                onPress={() => toggleSubtask(task.id, true)}
+                title={task.done ? 'Undo' : 'Complete'}
+                systemImage={
+                  task.done ? 'arrow.uturn.backward.circle' : 'checkmark.circle'
+                }
+                backgroundColor={task.done ? '#8E8E93' : '#34C759'}
+                onPress={() => toggleSubtask(task.id, !task.done)}
               />
             </CollectionView.SwipeActions>
           </CollectionView.Row>

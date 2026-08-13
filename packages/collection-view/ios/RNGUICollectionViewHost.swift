@@ -101,7 +101,9 @@ public final class RNGUICollectionViewHost: NSObject {
   private var keyboardAwareOffset: CGFloat = 0
   private var insetBehavior: UIScrollView.ContentInsetAdjustmentBehavior = .automatic
   private var adjustsContentInsets = true
-  private var keyboardObserver: KeyboardObserver!
+  /// Optional rather than implicitly unwrapped, because `teardown()` releases it and nothing should
+  /// be able to reach a torn-down observer through a force-unwrap afterwards.
+  private var keyboardObserver: KeyboardObserver?
 
   /**
    * The gradient behind the content.
@@ -245,7 +247,7 @@ public final class RNGUICollectionViewHost: NSObject {
     collectionView.addGestureRecognizer(dismissTap)
 
     keyboardObserver = KeyboardObserver(scrollView: collectionView)
-    keyboardObserver.onChange = { [weak self] overlap, duration, options in
+    keyboardObserver?.onChange = { [weak self] overlap, duration, options in
       self?.applyKeyboardOverlap(overlap, duration: duration, options: options)
     }
 
@@ -2409,7 +2411,11 @@ public final class RNGUICollectionViewHost: NSObject {
     // Observers, before the object graph starts coming apart under them.
     contentSizeObservation?.invalidate()
     contentSizeObservation = nil
-    keyboardObserver?.onChange = nil
+    // Unregistered and released, not merely muted: "stops everything" should mean the observer is
+    // gone at this point rather than surviving until the last reference to this object happens to
+    // drop somewhere the caller cannot see.
+    keyboardObserver?.stop()
+    keyboardObserver = nil
     collectionView.delegate = nil
     refreshControl.removeTarget(self, action: nil, for: .valueChanged)
     collectionView.refreshControl = nil

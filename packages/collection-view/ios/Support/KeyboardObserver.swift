@@ -47,6 +47,18 @@ final class KeyboardObserver: NSObject {
     )
   }
 
+  /**
+   * Unregisters, without waiting to be deallocated.
+   *
+   * `NotificationCenter` has zeroed its references since iOS 9, so the registration does go away on
+   * its own — this exists so that "stopped" is a thing the caller can *do* at a chosen moment rather
+   * than a consequence of the last reference dropping somewhere it cannot see.
+   */
+  func stop() {
+    onChange = nil
+    NotificationCenter.default.removeObserver(self)
+  }
+
   @objc private func keyboardWillChangeFrame(_ notification: Notification) {
     guard
       let scrollView,

@@ -27,7 +27,8 @@ reaching `prepareForRecycle`.
 
 **Teardown now happens when React says so, not whenever ARC gets there.** The component view
 implements `-invalidate` — the hook React actually runs for a class that declines recycling — which
-returns every hosted child, drops the KVO and keyboard observers, and nils the event blocks. The
+returns every hosted child, invalidates the content-size KVO, unregisters and releases the keyboard
+observer, and nils the event blocks. The
 hosted-child sweep is the same invariant the parking bay exists to hold, one level up: nothing should
 still be parented into a collection view React has finished with. A `#if DEBUG` check reports any
 child still held at that point, which would mean it reached the recycle pool without passing through
