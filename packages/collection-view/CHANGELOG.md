@@ -74,6 +74,33 @@ staying the stock blue. `refreshControl` is deliberately **not** forwarded by
 `BottomSheetCollectionView` — inside a sheet the pull and the sheet's collapse are the same
 gesture. All of it is in the README under `Root` and _Platform differences_.
 
+## 0.2.0
+
+Reconstructed from the commits after the fact — 0.2.0 was published without notes, and the gap was
+noticed while cutting 0.3.0. Recorded rather than left blank because the release carries a breaking
+change.
+
+**Breaking: `FontDesign` is gone, and `font.family` says what it used to.** `{ design: 'rounded' }`
+was a second vocabulary for something React Native already names: `RCTFontUtils` maps `system-ui`,
+`ui-sans-serif`, `ui-serif`, `ui-rounded` and `ui-monospace` onto `UIFontDescriptor.SystemDesign`
+for `<Text>`, so a screen mixing rows and labels had two names for SF Rounded depending on which
+component was asking. `family` now takes those five names or an app face, and the old rule that
+naming a family made `design` moot is unexpressible rather than documented. Anything passing
+`design` must move to `family`.
+
+Android carries its own table for it, deliberately. `ReactFontManager` has no entry for the generic
+names — handed `ui-monospace` it finds no asset and falls through to `Typeface.create`, which
+Android answers with the default sans — so deferring to React Native on both platforms would have
+meant `ui-monospace` being monospaced on one and not the other. Note it is spelled `ui-monospace`,
+as React Native and CSS spell it, and UIKit's `ui-monospaced` is not aliased to it.
+
+**Section headers and footers ignored every font field on Android.** `RowStyle.of` had resolved
+`headerFont` and `footerFont` since the M6 pass, and `LabelHolder.bind` set the text and the colour
+and stopped — so both fields, and the `font` they fall back to, reached the holder and were dropped.
+Rows were always right; only the supplementary path was wrong, which is why a screenshot review
+never caught it: a header is small, grey and five words long. Found by hashing the pixels of one
+header across two families and getting the same hash twice.
+
 ## 0.1.0
 
 The first published release. Both backends are real platform views: a `UICollectionView` on iOS
