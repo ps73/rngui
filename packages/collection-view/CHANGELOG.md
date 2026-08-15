@@ -26,9 +26,9 @@ content description on the field replaces its spoken text, so `187` would announ
 and the value the row exists for would go unsaid. Hint text does not replace anything — but
 TalkBack suppresses an editable node's hint as soon as it holds text, mirroring the way the visual
 hint disappears when you type, so it announces on an empty row and goes quiet exactly when there is
-a value to qualify. The labelling relationship is read either way, which is why it is the one
-carrying this; the hint keeps the unit as well, for the empty field and for readers with other
-policies.
+a value to qualify. The labelling relationship is read in both states, so it carries the unit
+alone: a row's hint stays the placeholder it was, and an empty field with no placeholder says
+"Height, cm" once rather than twice.
 
 `unit` is an unrestricted string, so neither platform lets it starve the field it belongs to, and
 both reserve the same 44pt/dp of it — the tap target the rest of iOS is built on. iOS orders who
@@ -44,6 +44,12 @@ and subtracted — all of them, by walking its own children rather than naming t
 have when this was written — and what remains after the field's 44dp is what the label and the unit
 divide. Measured on a 274dp window with an icon, a badge, an accessory, a 33-character label and a
 27-character unit, the field comes out at exactly the 115px that 44dp rounds to.
+
+The reserve is a floor against those two, not a promise the row can always keep: the fixed children
+are sized by their own content and nothing here shrinks them, so a row whose icon, badge and
+accessory already fill it leaves the field what is left. The label and the unit go to zero first,
+which is the order to want — a row decorated that heavily has outgrown one line long before its
+field notices.
 
 Not offered on `TextArea`, and refused in three places rather than documented in one: the type does
 not carry it, the serializer gates on the tag so props spread from a shared object cannot smuggle

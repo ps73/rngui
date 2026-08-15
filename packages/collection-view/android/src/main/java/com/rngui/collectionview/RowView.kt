@@ -281,36 +281,6 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
    */
   private val pendingEchoes = ArrayList<String>()
 
-  /**
-   * Carries the unit as hint text as well, for the empty field and for readers other than TalkBack.
-   *
-   * **Not the mechanism the unit relies on**, and the first version of this made that mistake.
-   * Hint text looks additive — it is a separate node property, and it does not replace `text` the
-   * way a content description does — but TalkBack suppresses an editable node's hint once the node
-   * has text, mirroring the way the visual hint disappears the moment you type. A row showing
-   * `187` therefore announced the value and nothing else, which is the same silence the content
-   * description caused, arrived at from the other side.
-   *
-   * What the unit actually rides on is the labelling relationship, in [bindText]: TalkBack reads an
-   * edit box's label whether or not it holds text. This stays because it costs nothing and is what
-   * an empty field announces.
-   *
-   * Reads the unit off the view rather than from a copy so it cannot go stale on a recycled row.
-   */
-  private val fieldAccessibilityDelegate =
-    object : androidx.core.view.AccessibilityDelegateCompat() {
-      override fun onInitializeAccessibilityNodeInfo(
-        host: View,
-        info: androidx.core.view.accessibility.AccessibilityNodeInfoCompat,
-      ) {
-        super.onInitializeAccessibilityNodeInfo(host, info)
-        val unit = unitView?.takeIf { it.visibility == View.VISIBLE }?.text?.toString().orEmpty()
-        if (unit.isEmpty()) return
-        val hint = info.hintText?.toString().orEmpty()
-        info.hintText = if (hint.isEmpty()) unit else "$hint, $unit"
-      }
-    }
-
   private val focusListener =
     OnFocusChangeListener { _, focused -> events.onFocusChange(boundRowId, focused) }
 
@@ -354,10 +324,10 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         // inventing an idiom rather than following one. `labelFor` is what turns two adjacent nodes
         // into a named field: TalkBack resolves it through the field's `labeledBy` and announces
         // the name with the value, whether or not the field holds text.
-        androidx.core.view.ViewCompat.setAccessibilityDelegate(
-          editText!!,
-          fieldAccessibilityDelegate,
-        )
+        //
+        // That covers both states, which is why the unit is *not* also written into the field's
+        // hint: on an empty row with no placeholder the reader would hear the label's "Height, cm"
+        // and then "cm" again from the hint. One carrier, not two.
         addView(labelView, LayoutParams(WRAP, WRAP).apply { marginEnd = context.dp(8) })
         addView(editText)
         addView(unitView)
@@ -580,11 +550,18 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
    * the field defend itself with `minWidth`: `LinearLayout` measures a weighted child with an
    * `EXACTLY` spec computed from what is left over, and an exact spec ignores a minimum.
    *
-   * So the arithmetic runs here, where the row's real width is known and the icon has been
+   * So the arithmetic runs here, where the row's real width is known and every fixed child has been
    * measured: whatever remains after the field's 44dp — the same tap target the iOS cell reserves —
    * is what the label and the unit may divide, the unit taking at most a third of it. Assigned only
    * when it changes, because `setMaxWidth` requests a layout and doing that unconditionally from
    * inside a measure pass is how a layout loop starts.
+   *
+   * **The 44dp is a floor against the two views this caps, not a promise the row can always keep.**
+   * The fixed children are sized by their own content and this does not shrink them, so a row whose
+   * icon, badge and accessory already fill it leaves the field whatever is left over — nothing, in
+   * the limit. What that costs is the label and the unit going to zero width first, which is the
+   * order a caller would want anyway; a row decorated that heavily has outgrown a single line long
+   * before the field notices.
    */
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
     if (kind == RowKind.textField) {
