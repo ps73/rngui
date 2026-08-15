@@ -191,6 +191,15 @@ separation itself. Set `headerLargeTitle: false` and the reserved gap stays, wit
 explain it. `firstSectionSpacing: 0` closes it; unset keeps the platform's value, because that gap is
 what a hand-written `UICollectionViewController` has.
 
+If that first section has a header, the number is the gap above the _header_ rather than between the
+header and its rows — a header sits outside the section's insets, so it is the only reading that
+means anything.
+
+**A section with no rows draws nothing and takes no space, on either platform.** A `<Section>` whose
+rows are all conditional and currently absent is dropped rather than laid out, so it cannot push the
+list down by a gap with nothing in it. One consequence worth knowing: a section with a header but no
+rows does not render that header.
+
 **`family` takes the same names React Native's `<Text>` takes.** Five of them are generic —
 `system-ui`, `ui-sans-serif`, `ui-serif`, `ui-rounded`, `ui-monospace` — and they are CSS's names,
 which React Native's iOS text layer already maps onto `UIFontDescriptor.SystemDesign`. Using the

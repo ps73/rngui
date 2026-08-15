@@ -78,9 +78,13 @@ data class ListStyle(
       val grouped = appearance != ListAppearance.plain
       val dark = resolver.isDark
 
-      val spacing =
-        resolver.dimension { it.sectionSpacing }?.toInt()
-          ?: if (grouped) DEFAULT_SECTION_SPACING_DP else PLAIN_SECTION_SPACING_DP
+      // Kept as the `Double` the tree sends rather than rounded on the way in. `dp` takes a
+      // `Number` and converts once, so truncating here would only throw away a caller's `12.5`
+      // before the conversion that knows what to do with it — and iOS, reading the same field,
+      // would keep it.
+      val spacing: Double =
+        resolver.dimension { it.sectionSpacing }
+          ?: (if (grouped) DEFAULT_SECTION_SPACING_DP else PLAIN_SECTION_SPACING_DP).toDouble()
 
       return ListStyle(
         appearance = appearance,
@@ -88,7 +92,7 @@ data class ListStyle(
         insetPx = if (appearance == ListAppearance.insetGrouped) context.dp(GroupShape.INSET_DP) else 0,
         sectionSpacingPx = context.dp(spacing),
         firstSectionSpacingPx =
-          context.dp(resolver.dimension { it.firstSectionSpacing }?.toInt() ?: spacing),
+          context.dp(resolver.dimension { it.firstSectionSpacing } ?: spacing),
         itemGapPx =
           if (style == AndroidListStyle.segmented) context.dp(GroupShape.SEGMENT_GAP_DP) else 0,
         separatorColor = rowStyle.separatorColor,

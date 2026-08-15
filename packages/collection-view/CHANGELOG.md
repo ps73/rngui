@@ -28,6 +28,22 @@ Android takes the same override for its own reason. It has the same gap above th
 there because an opaque toolbar reserves its height and stops, so without it the first card sits
 flush against the toolbar; unset, it stays `sectionSpacing` and nothing moves.
 
+**On a section with a header the number moves the header, not the rows.** A header is a boundary
+supplementary item and is laid out _outside_ the section's content insets, so the inset that works
+for a headerless section cannot reach it — setting that would have pushed the rows away from their
+own header and left the gap above it exactly as it was. A list section is given
+`headerTopPadding` instead, and a chip strip, which has no list configuration to carry one, is
+given the header item's own inset.
+
+**Sections with no rows are dropped on iOS, as they always were on Android.** A `<Section>` whose
+rows are all conditional and currently absent still crosses as a section, and a compositional layout
+charges it for its own content insets whether or not it has anything to put in them — so an empty
+leading section pushed the whole list down by a gap that drew nothing, and took the new override
+with it while the visible first section kept UIKit's reserved gap. Android's flattener has skipped
+rowless sections since it was written, so this is the two platforms agreeing rather than a new rule.
+The visible consequence is that a section with a header but no rows no longer draws that header on
+iOS; it never drew one on Android, so nothing that worked on both platforms changes.
+
 ## 0.4.0
 
 **`TextField` takes a `unit`.** The `cm` in `Height 187 cm`, drawn at the trailing edge of the row:
