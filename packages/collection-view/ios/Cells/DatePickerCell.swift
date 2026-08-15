@@ -164,6 +164,9 @@ final class DatePickerCell: UICollectionViewListCell {
  *
  * **Compact only.** `inline` and `wheels` draw dozens of labels — calendar days, drum rows — that
  * UIKit recycles as they scroll, and restyling those is that same control-nobody-has-seen trade.
+ *
+ * **Family and weight only.** A `size` in the row's font is deliberately not applied here; see
+ * `apply(_:in:depth:)`.
  */
 final class RowDatePicker: UIDatePicker {
   /// Nil for the styles this does not touch, which is what keeps `layoutSubviews` free for them.
@@ -189,12 +192,23 @@ final class RowDatePicker: UIDatePicker {
     // every layout pass.
     guard depth <= 4 else { return }
     for subview in view.subviews {
-      // **Only when it differs, and this is the load-bearing line.** Assigning `font` invalidates
-      // the label's intrinsic size, which marks its ancestors as needing layout, which calls this
-      // method again — unconditional, that is a layout loop that spins for as long as the row is on
-      // screen. The second pass finding the font already correct is what terminates it.
-      if let label = subview as? UILabel, label.font != font {
-        label.font = font
+      if let label = subview as? UILabel {
+        // **The face travels, the size does not.** The pill's rounded background is laid out by
+        // UIKit to metrics it chose, and it does not grow to fit metrics it did not — so honouring
+        // a `size` here buys a caller clipped or re-abbreviated text (`15. Aug 2026` becomes
+        // `15.08…`) in exchange for a number they cannot see the effect of until they try it.
+        // Family, weight and variations are the parts that fit any size, so those are what carry
+        // over; `size` on a compact picker is documented as ignored, and Dynamic Type — which the
+        // picker already follows on its own — is how the pill gets bigger.
+        let target = font.withSize(label.font?.pointSize ?? font.pointSize)
+        // **Only when it differs, and this is the load-bearing line.** Assigning `font` invalidates
+        // the label's intrinsic size, which marks its ancestors as needing layout, which calls this
+        // method again — unconditional, that is a layout loop that spins for as long as the row is
+        // on screen. The second pass finding the font already correct is what terminates it, and
+        // it terminates because `target` is derived from a size this never changes.
+        if label.font != target {
+          label.font = target
+        }
       }
       apply(font, in: subview, depth: depth + 1)
     }

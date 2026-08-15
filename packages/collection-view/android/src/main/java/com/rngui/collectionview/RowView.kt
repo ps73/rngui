@@ -207,6 +207,17 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       TextView(context).apply {
         visibility = View.GONE
         maxLines = 1
+        ellipsize = android.text.TextUtils.TruncateAt.END
+        // **Bounded, because `unit` is an unrestricted string and this child is not weighted.**
+        // `LinearLayout` measures its unweighted children first and hands the field whatever is
+        // left, so without a cap a caller who passes a sentence gets a row whose editable part is
+        // zero pixels wide. With the label capped at 160dp beside it, a 360dp row keeps ~84dp of
+        // field after both caps and the 16dp margins — narrow, but typeable, and the two static
+        // views ellipsize instead.
+        maxWidth = context.dp(72)
+        // Folded into the field's own description in `bindText`; left visible it is a second stop
+        // for TalkBack that reads "cm" with nothing to attach it to.
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         layoutParams = LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(4) }
       }
     } else {
@@ -300,9 +311,13 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       RowKind.textField -> {
         // Properties of the kind, not of the row, so they belong here rather than in `bindText`:
         // this holder serves `textField` for its whole life. A label allowed to wrap would turn a
-        // one-line row into two the first time someone used a long one.
+        // one-line row into two the first time someone used a long one, and one allowed to grow
+        // without bound would take the field's width with it — see [unitView] for the arithmetic.
         labelView.maxLines = 1
         labelView.ellipsize = android.text.TextUtils.TruncateAt.END
+        labelView.maxWidth = context.dp(160)
+        // The field speaks for the row; see `bindText`.
+        labelView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         addView(labelView, LayoutParams(WRAP, WRAP).apply { marginEnd = context.dp(8) })
         addView(editText)
         addView(unitView)
@@ -626,6 +641,15 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     }
 
     applyText(field, row.text.orEmpty())
+
+    // **One stop for TalkBack, not three.** The label and the unit are drawn beside the field but
+    // belong to it, and left as their own nodes the reader swipes past "Height", then the edit box,
+    // then a bare "cm" with nothing to attach it to. Both are marked unimportant where they are
+    // built, and their text is spoken here — matching what `TextFieldCell` does with
+    // `accessibilityLabel` on iOS. Null when the row has neither, which restores the default
+    // behaviour of announcing the hint.
+    val spoken = listOfNotNull(row.label?.takeIf { hasLabel }, unit.takeIf { it.isNotEmpty() })
+    field.contentDescription = if (spoken.isEmpty()) null else spoken.joinToString(", ")
 
     // `setHint` calls `checkForRelayout` without comparing, so assigning the same hint on every
     // commit is a layout pass per keystroke.

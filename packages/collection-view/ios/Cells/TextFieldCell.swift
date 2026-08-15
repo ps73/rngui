@@ -28,9 +28,15 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
   override init(frame: CGRect) {
     super.init(frame: frame)
 
-    label.setContentCompressionResistancePriority(.required, for: .horizontal)
-    // The field yields before the label does, so a long label never gets truncated to make room
-    // for an empty field.
+    // **An order, and none of it required.** The row has three things competing for one width, and
+    // what has to be true is that they yield in a sensible sequence: the field first (its text
+    // scrolls, so it loses nothing), then the label, then the unit. Stating that as priorities
+    // rather than as `.required` is what keeps a long label or an exotic unit from making the
+    // layout unsatisfiable — the stack is pinned to both margins, so a child that refuses to
+    // compress at 1000 leaves UIKit to break one of those pins and log about it. Below 1000
+    // everything simply truncates, which is a row that reads badly rather than a row that is
+    // laid out wrong.
+    label.setContentCompressionResistancePriority(.defaultHigh + 1, for: .horizontal)
     field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     // **Stated now that a third view can share the row.** With two arranged subviews at the same
     // hugging priority, `.fill` picks a stretcher arbitrarily and it happened to pick the field;
@@ -40,9 +46,10 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
     field.delegate = self
     field.addTarget(self, action: #selector(editingChanged), for: .editingChanged)
 
-    // A unit wins in both directions: two characters cannot starve a row, and truncated it stops
-    // being a unit — `k` is not `kg`.
-    unitLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+    // The unit yields last, because truncated it stops being a unit — `k` is not `kg`. Last, not
+    // never: `unit` is an unrestricted string, and a caller who puts a sentence in it gets an
+    // ellipsis rather than a field squeezed out of its own row.
+    unitLabel.setContentCompressionResistancePriority(.defaultHigh + 2, for: .horizontal)
     unitLabel.setContentHuggingPriority(.required, for: .horizontal)
     // `187` and `cm` are one value to a reader, so they are one target to a finger — the unit sits
     // exactly where someone aims to correct the number.
@@ -50,9 +57,12 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
     unitLabel.addGestureRecognizer(
       UITapGestureRecognizer(target: self, action: #selector(focusField))
     )
-    // …and one element to VoiceOver. Folded into the field's own label in `configure` rather than
-    // left as a stray "cm" to swipe to and correlate.
+    // …and **one element** to VoiceOver, which takes hiding both of the row's static labels rather
+    // than only the unit: their text is folded into the field's own `accessibilityLabel` in
+    // `configure`, so leaving either visible to the reader announces it twice — "Height", then
+    // "Height, cm" — which is worse than the stray "cm" this started out fixing.
     unitLabel.isAccessibilityElement = false
+    label.isAccessibilityElement = false
 
     stack.axis = .horizontal
     stack.spacing = 8
@@ -76,7 +86,16 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
         for: .preferredFont(forTextStyle: .body)
       )
     )
+    // **The row's one guarantee: the field stays typeable.** Priorities alone order who yields, and
+    // ordering is not a floor — a long enough label and unit together squeeze the field to nothing
+    // and leave a row that cannot be edited at all. 44pt is the tap target the rest of iOS is built
+    // on. Priority above both static labels so they are what truncate, and still below `.required`
+    // so the pinned stack has the last word on a genuinely narrow row.
+    let minimumFieldWidth = field.widthAnchor.constraint(greaterThanOrEqualToConstant: 44)
+    minimumFieldWidth.priority = .defaultHigh + 3
+
     NSLayoutConstraint.activate([
+      minimumFieldWidth,
       stack.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
       stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
       stack.topAnchor.constraint(equalTo: guide.topAnchor),
