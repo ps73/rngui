@@ -471,11 +471,30 @@ public final class RNGUICollectionViewHost: NSObject {
 
       let section = self.sections[safe: index]
 
+      /**
+       * The caller's own number for the top of the list, on the section that starts it.
+       *
+       * Index 0 is that section because `laidOut(_:)` has already dropped the rowless ones — which
+       * it has to, since a section that draws nothing is still charged for its insets here, so an
+       * empty leading section would otherwise both push the list down and take this override with
+       * it while the visible first section kept UIKit's reserved gap.
+       */
+      let firstSpacing: CGFloat? =
+        index == 0
+        ? self.resolver
+          .value({ $0.firstSectionSpacing }, for: environment.traitCollection)
+          .map { CGFloat($0) }
+        : nil
+
       // A horizontally scrolling strip *inside* a vertical list — the one thing compositional
       // layout does that a `UITableView` cannot. Returned before any list configuration is built,
       // because a chip section is not a list section at all.
       if section?.layout == .chips {
-        return self.makeChipSection(for: section, environment: environment)
+        let chipSection = self.makeChipSection(for: section, environment: environment)
+        if let firstSpacing {
+          Self.applyTopSpacing(firstSpacing, to: chipSection)
+        }
+        return chipSection
       }
 
       var configuration = UICollectionLayoutListConfiguration(
@@ -489,6 +508,16 @@ public final class RNGUICollectionViewHost: NSObject {
       // grouped list and wrong for an index.
       if self.listAppearance == .plain {
         configuration.headerTopPadding = 0
+      }
+
+      // **A header is what the gap is above, so on a headered section it is the header's padding
+      // that has to move.** A boundary supplementary item is laid out *outside* the section's
+      // content insets, so `contentInsets.top` cannot reach it — raising that on a headered
+      // section would push the rows away from their own header and leave the gap above it
+      // untouched, which is the opposite of what was asked for. `headerTopPadding` is the number
+      // that separates a header from whatever is above it, and the two are never both the gap.
+      if let firstSpacing, section?.header != nil {
+        configuration.headerTopPadding = firstSpacing
       }
 
       // Transparent so the collection view's own background is what shows through; otherwise
@@ -560,7 +589,35 @@ public final class RNGUICollectionViewHost: NSObject {
         layoutSection.boundarySupplementaryItems = items
       }
 
+      // Only when the section has no header: with one, the gap belongs to `headerTopPadding` and
+      // was set on the configuration above.
+      if let firstSpacing, section?.header == nil {
+        layoutSection.contentInsets.top = firstSpacing
+      }
+
       return layoutSection
+    }
+  }
+
+  /**
+   * The gap above a section that is not built from a list configuration — a chip strip.
+   *
+   * Same rule as the list path and for the same reason: a header is a boundary supplementary item
+   * laid out outside the section's content insets, so the gap above it is the header item's own
+   * inset rather than the section's. A chip section has no `UICollectionLayoutListConfiguration`
+   * and therefore no `headerTopPadding`, so its header item is asked directly.
+   */
+  private static func applyTopSpacing(
+    _ spacing: CGFloat,
+    to layoutSection: NSCollectionLayoutSection
+  ) {
+    let header = layoutSection.boundarySupplementaryItems.first {
+      $0.elementKind == UICollectionView.elementKindSectionHeader && $0.alignment == .top
+    }
+    if let header {
+      header.contentInsets.top = spacing
+    } else {
+      layoutSection.contentInsets.top = spacing
     }
   }
 
@@ -2145,6 +2202,30 @@ public final class RNGUICollectionViewHost: NSObject {
    * scan is separate from the rebuild: every commit pays for the check, and only a malformed tree
    * pays for the copy.
    */
+  /**
+   * Sections with no rows, dropped — because on iOS an empty section is not free.
+   *
+   * A `<Section>` whose rows are all conditional and currently absent still crosses as a section,
+   * and a compositional layout charges it for its own content insets whether or not it has anything
+   * to put inside them. So an empty leading section pushes the entire list down by a gap that draws
+   * nothing, and it does it on iOS alone: Android's flattener has skipped rowless sections since it
+   * was written (`FlattenedTree.kt`), so the same tree renders differently on the two platforms.
+   *
+   * Filtering here rather than only in the snapshot, so `sections`, the row lookups, the index paths
+   * and the section index bar all agree about which sections exist — a snapshot that disagreed with
+   * `sections` would mean index paths pointing at the wrong rows.
+   *
+   * The visible consequence is that a section with a header or footer but no rows no longer draws
+   * that header on iOS. It never drew one on Android, so nothing that worked on both platforms
+   * changes; what changes is that a screen relying on it on iOS alone now matches the other side.
+   *
+   * Allocates only when there is something to drop, as `deduplicated(_:)` does above it.
+   */
+  private static func laidOut(_ sections: [SectionSpec]) -> [SectionSpec] {
+    guard sections.contains(where: { $0.rows.isEmpty }) else { return sections }
+    return sections.filter { !$0.rows.isEmpty }
+  }
+
   private static func deduplicated(_ sections: [SectionSpec]) -> [SectionSpec] {
     var seenSectionIds = Set<String>()
     var seenRowIds = Set<String>()
@@ -2210,7 +2291,7 @@ public final class RNGUICollectionViewHost: NSObject {
   private func apply(tree: Tree) {
     // Deduplicated *before* anything derives from it, so every structure below agrees about which
     // rows exist. See `deduplicated(_:)`: this is a crash guard, not tidying.
-    let normalized = Self.deduplicated(tree.sections)
+    let normalized = Self.laidOut(Self.deduplicated(tree.sections))
 
     sections = normalized
     listAppearance = tree.listAppearance ?? .insetGrouped

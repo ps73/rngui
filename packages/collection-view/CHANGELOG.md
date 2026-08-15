@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased
+
+**`appearance.firstSectionSpacing`, for the gap UIKit sizes from the navigation bar rather than
+from the list.** A grouped list reserves about 35pt above its first section — `UITableView`'s
+grouped inheritance, which `NSCollectionLayoutSection.list(using:)` still carries — and UIKit drops
+it in exactly one arrangement: when the list is the scroll view under an _expanded large title_,
+where the title already separates the content from the bar. Set `headerLargeTitle: false` and the
+reserved gap stays with nothing above it to explain it, and the list reads as having been pushed
+down the screen.
+
+Measured on an iPhone 17 Pro rather than guessed at, because the two halves look alike and only one
+of them is the culprit. The content inset is right in both cases — 116pt without the large title
+(62pt safe area plus a 54pt bar) and 168pt with it — and the first card sits 37pt below that inset
+without the large title against 2pt with it. Pinning the scroll view with
+`contentInsetAdjustmentBehavior: 'never'` and a fixed `contentInset` and then flipping only
+`headerLargeTitle` reproduces the 37-against-2 with nothing else changed, which puts it in the
+layout and not in the inset arithmetic.
+
+`0` closes the gap. Unset keeps the platform's own value, and that is the deliberate default: the
+reserved gap is what a hand-written `UICollectionViewController` does, so closing it silently would
+be the library disagreeing with the platform on the caller's behalf. Under a large title the field
+costs nothing either way — UIKit has already resolved that inset to zero, so writing zero is what it
+was.
+
+Android takes the same override for its own reason. It has the same gap above the first item, put
+there because an opaque toolbar reserves its height and stops, so without it the first card sits
+flush against the toolbar; unset, it stays `sectionSpacing` and nothing moves.
+
+**On a section with a header the number moves the header, not the rows.** A header is a boundary
+supplementary item and is laid out _outside_ the section's content insets, so the inset that works
+for a headerless section cannot reach it — setting that would have pushed the rows away from their
+own header and left the gap above it exactly as it was. A list section is given
+`headerTopPadding` instead, and a chip strip, which has no list configuration to carry one, is
+given the header item's own inset.
+
+**Sections with no rows are dropped on iOS, as they always were on Android.** A `<Section>` whose
+rows are all conditional and currently absent still crosses as a section, and a compositional layout
+charges it for its own content insets whether or not it has anything to put in them — so an empty
+leading section pushed the whole list down by a gap that drew nothing, and took the new override
+with it while the visible first section kept UIKit's reserved gap. Android's flattener has skipped
+rowless sections since it was written, so this is the two platforms agreeing rather than a new rule.
+The visible consequence is that a section with a header but no rows no longer draws that header on
+iOS; it never drew one on Android, so nothing that worked on both platforms changes.
+
 ## 0.4.0
 
 **`TextField` takes a `unit`.** The `cm` in `Height 187 cm`, drawn at the trailing edge of the row:

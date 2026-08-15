@@ -577,6 +577,25 @@ export interface Appearance {
    * Unset keeps the platform's own default.
    */
   sectionSpacing?: number
+
+  /**
+   * The gap above the *first* section, which is a separate number from the one between sections.
+   *
+   * It has to be separate, because UIKit itself treats it as one. A grouped list reserves about
+   * 35pt above section 0 — `UITableView`'s grouped inheritance, which
+   * `NSCollectionLayoutSection.list(using:)` still carries — and UIKit drops it only when the list
+   * is the scroll view under an *expanded large title*, the one arrangement where the title
+   * already supplies that separation. Turn the large title off and the gap comes back with
+   * nothing above it to explain it, which reads as the list having been pushed down.
+   *
+   * So this is the number a screen without a large title has to be able to say. `0` closes the
+   * gap entirely; unset keeps the platform's own value, which is the honest default because the
+   * 35pt *is* what a hand-written `UICollectionViewController` does.
+   *
+   * Android has the same gap for its own reasons — an opaque toolbar reserves its height and
+   * stops, so the first card would otherwise sit flush against it — and takes the same override.
+   */
+  firstSectionSpacing?: number
   /** Default font for row labels and values. */
   font?: FontSpec
   /** Overrides `font` for section headers. */
