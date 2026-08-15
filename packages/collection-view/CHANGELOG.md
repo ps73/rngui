@@ -11,17 +11,30 @@ Two details are load-bearing rather than cosmetic. A unit right-aligns the field
 with no label**, because a suffix separated from its value by the width of the row has stopped
 being a suffix; a field with neither still fills the row, which is the Reminders title look,
 unchanged. And the unit is part of the value's hit target on both platforms — `187` and `cm` are
-one value to a reader, so a tap on either focuses the field. To VoiceOver and TalkBack they are one
-element too: both static labels are hidden from the reader and their text is spoken by the field
-itself, as "Height, cm" — three stops on a row that holds one value is worse than the stray unit
-that started this.
+one value to a reader, so a tap on either focuses the field.
 
-`unit` is an unrestricted string, so neither platform lets it starve the field it belongs to. iOS
-orders who yields by priority — field first, then label, then unit, none of them `.required`, so a
-long one truncates rather than making a stack pinned to both margins unsatisfiable — under a 44pt
-floor on the field itself. Android has no such ordering, so the two static views are capped in dp
-instead: `LinearLayout` measures its unweighted children first, and an uncapped sentence in a
-`unit` would leave the weighted field zero pixels wide.
+Each platform says that to its screen reader the way that platform says it. On iOS both static
+labels are hidden and the field speaks for them — "Height, cm" — because a `UILabel` beside a
+`UITextField` in one cell is not a relationship VoiceOver knows about. Android has one: the label
+stays an ordinary node and points at the field with `labelFor`, which is how its own Settings rows
+read, and the unit — which is not a label — becomes the field's hint text. What neither does is put
+any of it in a content description: that **replaces** the spoken text on an editable node, so a
+field holding `187` would announce as "Height, cm" and the value the row exists for would go
+unsaid.
+
+`unit` is an unrestricted string, so neither platform lets it starve the field it belongs to, and
+both reserve the same 44pt/dp of it — the tap target the rest of iOS is built on. iOS orders who
+yields by priority: field first, then label, then unit, none of them `.required`, so a long one
+truncates rather than making a stack pinned to both margins unsatisfiable.
+
+Android cannot express that order, and per-view dp caps alone are a ceiling rather than a floor — a
+row is free to combine a leading icon with both of them on a 320dp screen or in a multi-window split
+until nothing is left, and a weighted child cannot defend itself with `minWidth` because
+`LinearLayout` measures it with an exact spec computed from the leftovers. So the row does the
+arithmetic in `onMeasure`, where its real width is known and the icon has been measured: what
+remains after the field's 44dp is what the label and the unit divide. Measured on a 274dp window
+with an icon, a 33-character label and a 27-character unit, the field comes out at exactly the 115px
+that 44dp rounds to.
 
 Not offered on `TextArea`, and refused in three places rather than documented in one: the type does
 not carry it, the serializer gates on the tag so props spread from a shared object cannot smuggle

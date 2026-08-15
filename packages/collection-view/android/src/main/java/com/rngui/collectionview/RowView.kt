@@ -190,6 +190,9 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         // "this is a form field in a form", where the row says "this row's value is editable".
         background = null
         setPadding(0, 0, 0, 0)
+        // So the leading label can point at it with `labelFor`, which is how Android says "this
+        // text names that field" — the relationship needs an id to name.
+        id = View.generateViewId()
         layoutParams = LayoutParams(0, WRAP, 1f)
       }
     } else {
@@ -215,8 +218,8 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         // field after both caps and the 16dp margins — narrow, but typeable, and the two static
         // views ellipsize instead.
         maxWidth = context.dp(72)
-        // Folded into the field's own description in `bindText`; left visible it is a second stop
-        // for TalkBack that reads "cm" with nothing to attach it to.
+        // Spoken as part of the field, by the delegate below; left as a node of its own it is a
+        // stop that reads "cm" with nothing to attach it to.
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         layoutParams = LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(4) }
       }
@@ -278,6 +281,32 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
    */
   private val pendingEchoes = ArrayList<String>()
 
+  /**
+   * Speaks the unit as part of the field it trails, without touching what the field holds.
+   *
+   * Hint text rather than a content description, because the two are not interchangeable on an
+   * editable node: a content description **replaces** the spoken text, so `187 cm` would be
+   * announced as `cm`. Hint text is additive — TalkBack reads the value and then the hint — which
+   * is the same shape as the visual row, where the unit trails the number rather than standing in
+   * for it. `AccessibilityNodeInfoCompat` carries it in the node's extras below API 26, where the
+   * platform property does not exist yet, and TalkBack has read that key for far longer.
+   *
+   * Reads the unit off the view rather than from a copy so it cannot go stale on a recycled row.
+   */
+  private val fieldAccessibilityDelegate =
+    object : androidx.core.view.AccessibilityDelegateCompat() {
+      override fun onInitializeAccessibilityNodeInfo(
+        host: View,
+        info: androidx.core.view.accessibility.AccessibilityNodeInfoCompat,
+      ) {
+        super.onInitializeAccessibilityNodeInfo(host, info)
+        val unit = unitView?.takeIf { it.visibility == View.VISIBLE }?.text?.toString().orEmpty()
+        if (unit.isEmpty()) return
+        val hint = info.hintText?.toString().orEmpty()
+        info.hintText = if (hint.isEmpty()) unit else "$hint, $unit"
+      }
+    }
+
   private val focusListener =
     OnFocusChangeListener { _, focused -> events.onFocusChange(boundRowId, focused) }
 
@@ -316,8 +345,16 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         labelView.maxLines = 1
         labelView.ellipsize = android.text.TextUtils.TruncateAt.END
         labelView.maxWidth = context.dp(160)
-        // The field speaks for the row; see `bindText`.
-        labelView.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        // **Left as its own node, and pointed at the field.** A label beside a field is an ordinary
+        // Android node — Settings reads exactly that way — so hiding it would be inventing an idiom
+        // rather than following one. `labelFor` is what turns two adjacent nodes into a named field:
+        // TalkBack resolves it through the field's `labeledBy` and announces the name with the
+        // value, whichever of the two the reader lands on.
+        labelView.labelFor = editText!!.id
+        androidx.core.view.ViewCompat.setAccessibilityDelegate(
+          editText,
+          fieldAccessibilityDelegate,
+        )
         addView(labelView, LayoutParams(WRAP, WRAP).apply { marginEnd = context.dp(8) })
         addView(editText)
         addView(unitView)
@@ -532,6 +569,53 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     }
 
   /**
+   * Keeps the field typeable, whatever the row is asked to hold beside it.
+   *
+   * **The dp caps on the label and the unit are ceilings, not a floor.** They bound each view on
+   * its own, and a row is free to combine them with a leading icon on a narrow screen — 320dp, or a
+   * multi-window split — until the three of them together leave the weighted field nothing. Nor can
+   * the field defend itself with `minWidth`: `LinearLayout` measures a weighted child with an
+   * `EXACTLY` spec computed from what is left over, and an exact spec ignores a minimum.
+   *
+   * So the arithmetic runs here, where the row's real width is known and the icon has been
+   * measured: whatever remains after the field's 44dp — the same tap target the iOS cell reserves —
+   * is what the label and the unit may divide, the unit taking at most a third of it. Assigned only
+   * when it changes, because `setMaxWidth` requests a layout and doing that unconditionally from
+   * inside a measure pass is how a layout loop starts.
+   */
+  override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+    if (kind == RowKind.textField) {
+      var spare =
+        MeasureSpec.getSize(widthMeasureSpec) -
+          paddingStart -
+          paddingEnd -
+          context.dp(FIELD_MIN_WIDTH_DP) -
+          // The label's trailing margin, and the unit's leading one when it is showing.
+          context.dp(8) -
+          (if (unitView?.visibility == View.VISIBLE) context.dp(4) else 0)
+      if (iconView.visibility != View.GONE) {
+        measureChild(iconView, widthMeasureSpec, heightMeasureSpec)
+        spare -= iconView.measuredWidth + context.dp(12)
+      }
+
+      val unitCap = minOf(context.dp(72), maxOf(0, spare / 3))
+      val labelCap = minOf(context.dp(160), maxOf(0, spare - unitCap))
+      if (appliedUnitCap != unitCap) {
+        appliedUnitCap = unitCap
+        unitView?.maxWidth = unitCap
+      }
+      if (appliedLabelCap != labelCap) {
+        appliedLabelCap = labelCap
+        labelView.maxWidth = labelCap
+      }
+    }
+    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+  }
+
+  private var appliedUnitCap: Int? = null
+  private var appliedLabelCap: Int? = null
+
+  /**
    * The keyboard configuration of an [EditText] — the four properties that describe how it is typed
    * into rather than what it holds.
    *
@@ -642,14 +726,13 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
 
     applyText(field, row.text.orEmpty())
 
-    // **One stop for TalkBack, not three.** The label and the unit are drawn beside the field but
-    // belong to it, and left as their own nodes the reader swipes past "Height", then the edit box,
-    // then a bare "cm" with nothing to attach it to. Both are marked unimportant where they are
-    // built, and their text is spoken here — matching what `TextFieldCell` does with
-    // `accessibilityLabel` on iOS. Null when the row has neither, which restores the default
-    // behaviour of announcing the hint.
-    val spoken = listOfNotNull(row.label?.takeIf { hasLabel }, unit.takeIf { it.isNotEmpty() })
-    field.contentDescription = if (spoken.isEmpty()) null else spoken.joinToString(", ")
+    // **Never a `contentDescription` on an editable node.** An earlier version put "Height, cm"
+    // here, which reads as the fix it is not: TalkBack's description path returns the content
+    // description whenever one is set and only falls back to the node's text when it is empty — so
+    // a field holding `187` announced as "Height, cm" and the value the row exists for went
+    // unspoken. The label reaches the node through `labelFor` and the unit through the hint text
+    // below; both leave `text` alone.
+    field.contentDescription = null
 
     // `setHint` calls `checkForRelayout` without comparing, so assigning the same hint on every
     // commit is a layout pass per keystroke.
@@ -943,6 +1026,9 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
   private companion object {
     const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     const val LABEL_SIZE_SP = 17f
+
+    /** What a `textField` row reserves for its field, in dp. The iOS cell reserves 44pt. */
+    const val FIELD_MIN_WIDTH_DP = 44
     const val SECONDARY_SIZE_SP = 15f
     const val CARD_VALUE_SIZE_SP = 28f
 
