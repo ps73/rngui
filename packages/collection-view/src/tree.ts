@@ -298,6 +298,18 @@ export interface RowSpec {
   returnKeyType?: ReturnKeyType
   secure?: boolean
   /**
+   * A fixed suffix at the trailing edge of a `textField` row — the `cm` in `Height 187 cm`.
+   *
+   * Deliberately not part of `text`. The caller owns the value, and a unit folded into it would
+   * come straight back through `onChangeText` as something the user has to parse off again — so
+   * native draws it beside the field and never sends it anywhere.
+   *
+   * **Read by `textField` rows only.** A `textArea` fills its row and grows with its content, so a
+   * suffix has no line to sit on; the TypeScript API does not offer one, the serializer will not
+   * write one, and both platforms ignore it if an older bundle sends one anyway.
+   */
+  unit?: string
+  /**
    * Caps how far a `textArea` grows before it starts scrolling internally. Unset means it grows
    * without limit, which is what the Reminders notes field does.
    */

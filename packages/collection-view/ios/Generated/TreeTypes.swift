@@ -398,6 +398,16 @@ struct RowSpec: Decodable, Equatable {
   var autoCapitalize: AutoCapitalize?
   var returnKeyType: ReturnKeyType?
   var secure: Bool?
+  /// A fixed suffix at the trailing edge of a `textField` row — the `cm` in `Height 187 cm`.
+  ///
+  /// Deliberately not part of `text`. The caller owns the value, and a unit folded into it would
+  /// come straight back through `onChangeText` as something the user has to parse off again — so
+  /// native draws it beside the field and never sends it anywhere.
+  ///
+  /// **Read by `textField` rows only.** A `textArea` fills its row and grows with its content, so a
+  /// suffix has no line to sit on; the TypeScript API does not offer one, the serializer will not
+  /// write one, and both platforms ignore it if an older bundle sends one anyway.
+  var unit: String?
   /// Caps how far a `textArea` grows before it starts scrolling internally. Unset means it grows
   /// without limit, which is what the Reminders notes field does.
   var maxLines: Int?
@@ -442,7 +452,7 @@ struct RowSpec: Decodable, Equatable {
   var leadingActions: [SwipeActionSpec]?
 
   private enum CodingKeys: String, CodingKey {
-    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, hostBackground, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, sliderValue, sliderMin, sliderMax, sliderStep, sliderMinImage, sliderMaxImage, role, menuItems, selectedItemId, trailingActions, leadingActions
+    case id, kind, label, secondaryLabel, value, accessory, systemImage, materialSymbol, imageColor, imageBackground, imageMonogram, imageSize, badge, badgeColor, secondaryLabelTinted, font, selectable, disabled, tintColor, hostIndex, hostBackground, height, on, text, placeholder, keyboardType, autoCapitalize, returnKeyType, secure, unit, maxLines, dateMillis, datePickerMode, datePickerStyle, minDateMillis, maxDateMillis, sliderValue, sliderMin, sliderMax, sliderStep, sliderMinImage, sliderMaxImage, role, menuItems, selectedItemId, trailingActions, leadingActions
   }
 
   /// All defaults. Lets native render an empty list before any tree has arrived.
@@ -479,6 +489,7 @@ struct RowSpec: Decodable, Equatable {
     autoCapitalize = try container.decodeIfPresent(AutoCapitalize.self, forKey: .autoCapitalize)
     returnKeyType = try container.decodeIfPresent(ReturnKeyType.self, forKey: .returnKeyType)
     secure = try container.decodeIfPresent(Bool.self, forKey: .secure)
+    unit = try container.decodeIfPresent(String.self, forKey: .unit)
     maxLines = try container.decodeIfPresent(Int.self, forKey: .maxLines)
     dateMillis = try container.decodeIfPresent(Double.self, forKey: .dateMillis)
     datePickerMode = try container.decodeIfPresent(DatePickerMode.self, forKey: .datePickerMode)

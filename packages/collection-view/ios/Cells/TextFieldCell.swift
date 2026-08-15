@@ -7,6 +7,9 @@ import UIKit
  * trails, right-aligned — the Settings Wi-Fi-password look. Without one, the field fills the row —
  * the Reminders title look.
  *
+ * A `unit` trails the field in either shape — the `cm` in `Height 187 cm`. It is drawn rather than
+ * typed: it never enters `text`, so nothing the user types has to be parsed back out of it.
+ *
  * **The reason this cell exists at all rather than being a `Host` row** is the first responder.
  * `reconfigureItems` keeps the cell instance alive across a re-render, so a field being typed into
  * keeps focus and caret; a React child would be torn down and remounted. What that requires from
@@ -15,6 +18,7 @@ import UIKit
 final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
   let field = UITextField()
   private let label = UILabel()
+  private let unitLabel = UILabel()
   private let stack = UIStackView()
 
   var onChange: ((String) -> Void)?
@@ -24,12 +28,41 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
   override init(frame: CGRect) {
     super.init(frame: frame)
 
-    label.setContentCompressionResistancePriority(.required, for: .horizontal)
-    // The field yields before the label does, so a long label never gets truncated to make room
-    // for an empty field.
+    // **An order, and none of it required.** The row has three things competing for one width, and
+    // what has to be true is that they yield in a sensible sequence: the field first (its text
+    // scrolls, so it loses nothing), then the label, then the unit. Stating that as priorities
+    // rather than as `.required` is what keeps a long label or an exotic unit from making the
+    // layout unsatisfiable — the stack is pinned to both margins, so a child that refuses to
+    // compress at 1000 leaves UIKit to break one of those pins and log about it. Below 1000
+    // everything simply truncates, which is a row that reads badly rather than a row that is
+    // laid out wrong.
+    label.setContentCompressionResistancePriority(.defaultHigh + 1, for: .horizontal)
     field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+    // **Stated now that a third view can share the row.** With two arranged subviews at the same
+    // hugging priority, `.fill` picks a stretcher arbitrarily and it happened to pick the field;
+    // with three, leaving it unsaid lets the unit drift away from the number it belongs to. The
+    // field is the one view that absorbs slack, and everything else hugs its own text.
+    field.setContentHuggingPriority(.defaultLow - 1, for: .horizontal)
     field.delegate = self
     field.addTarget(self, action: #selector(editingChanged), for: .editingChanged)
+
+    // The unit yields last, because truncated it stops being a unit — `k` is not `kg`. Last, not
+    // never: `unit` is an unrestricted string, and a caller who puts a sentence in it gets an
+    // ellipsis rather than a field squeezed out of its own row.
+    unitLabel.setContentCompressionResistancePriority(.defaultHigh + 2, for: .horizontal)
+    unitLabel.setContentHuggingPriority(.required, for: .horizontal)
+    // `187` and `cm` are one value to a reader, so they are one target to a finger — the unit sits
+    // exactly where someone aims to correct the number.
+    unitLabel.isUserInteractionEnabled = true
+    unitLabel.addGestureRecognizer(
+      UITapGestureRecognizer(target: self, action: #selector(focusField))
+    )
+    // …and **one element** to VoiceOver, which takes hiding both of the row's static labels rather
+    // than only the unit: their text is folded into the field's own `accessibilityLabel` in
+    // `configure`, so leaving either visible to the reader announces it twice — "Height", then
+    // "Height, cm" — which is worse than the stray "cm" this started out fixing.
+    unitLabel.isAccessibilityElement = false
+    label.isAccessibilityElement = false
 
     stack.axis = .horizontal
     stack.spacing = 8
@@ -37,6 +70,11 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
     stack.translatesAutoresizingMaskIntoConstraints = false
     stack.addArrangedSubview(label)
     stack.addArrangedSubview(field)
+    stack.addArrangedSubview(unitLabel)
+    // A suffix, not a third column: 8pt separates the label from the field, 4 separates a value
+    // from its unit. `UIStackView` drops the spacing that follows a hidden arranged subview, so a
+    // row without a unit lays out exactly as it did before this existed.
+    stack.setCustomSpacing(4, after: field)
     contentView.addSubview(stack)
 
     // Pinned to the layout margins guide, not the bounds: that guide is what carries the list
@@ -48,7 +86,16 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
         for: .preferredFont(forTextStyle: .body)
       )
     )
+    // **The row's one guarantee: the field stays typeable.** Priorities alone order who yields, and
+    // ordering is not a floor — a long enough label and unit together squeeze the field to nothing
+    // and leave a row that cannot be edited at all. 44pt is the tap target the rest of iOS is built
+    // on. Priority above both static labels so they are what truncate, and still below `.required`
+    // so the pinned stack has the last word on a genuinely narrow row.
+    let minimumFieldWidth = field.widthAnchor.constraint(greaterThanOrEqualToConstant: 44)
+    minimumFieldWidth.priority = .defaultHigh + 3
+
     NSLayoutConstraint.activate([
+      minimumFieldWidth,
       stack.leadingAnchor.constraint(equalTo: guide.leadingAnchor),
       stack.trailingAnchor.constraint(equalTo: guide.trailingAnchor),
       stack.topAnchor.constraint(equalTo: guide.topAnchor),
@@ -68,17 +115,32 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
     row: RowSpec,
     labelFont: UIFont,
     labelColor: UIColor?,
+    secondaryColor: UIColor?,
     tint: UIColor?
   ) {
     let hasLabel = !(row.label ?? "").isEmpty
+    let unit = row.unit ?? ""
+    let hasUnit = !unit.isEmpty
+
     label.isHidden = !hasLabel
     label.text = row.label
     label.font = labelFont
     label.textColor = row.disabled == true ? .secondaryLabel : (labelColor ?? .label)
 
-    // Right-aligned only when sharing the row with a label. Filling the row it reads as body text
-    // and should start at the leading edge.
-    field.textAlignment = hasLabel ? .right : .natural
+    // Assigned every pass, hidden state included: a cell that kept the previous row's unit would
+    // caption this row's value with someone else's — the recycling bug `applyText` below is the
+    // longer story of.
+    unitLabel.isHidden = !hasUnit
+    unitLabel.text = unit
+    unitLabel.font = labelFont
+    unitLabel.textColor =
+      row.disabled == true ? .tertiaryLabel : (secondaryColor ?? .secondaryLabel)
+
+    // Right-aligned whenever something else shares the row — **and a unit counts**, which is the
+    // whole reason this is not just `hasLabel`. A suffix separated from its value by the width of
+    // the row has stopped being a suffix. With neither, the field fills the row and reads as body
+    // text, so it starts at the leading edge: the Reminders title look, unchanged.
+    field.textAlignment = (hasLabel || hasUnit) ? .right : .natural
     field.font = labelFont
     field.textColor = labelColor ?? .label
     field.placeholder = row.placeholder
@@ -90,7 +152,18 @@ final class TextFieldCell: UICollectionViewListCell, UITextFieldDelegate {
     field.tintColor = tint
     minimumHeightConstraint.constant = TextInputTraits.minimumContentHeight(for: labelFont)
 
+    // "Height, cm" spoken once, rather than a label element, a value element, and a bare "cm" the
+    // reader has to put back together. `nil` when the row has neither, which restores the field's
+    // own default rather than pinning it to an empty string.
+    let spoken = [hasLabel ? row.label : nil, hasUnit ? unit : nil].compactMap { $0 }
+    field.accessibilityLabel = spoken.isEmpty ? nil : spoken.joined(separator: ", ")
+
     applyText(row.text ?? "")
+  }
+
+  @objc private func focusField() {
+    guard field.isEnabled else { return }
+    field.becomeFirstResponder()
   }
 
   /**

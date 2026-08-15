@@ -1,5 +1,112 @@
 # Changelog
 
+## Unreleased
+
+**`TextField` takes a `unit`.** The `cm` in `Height 187 cm`, drawn at the trailing edge of the row:
+a leading label, the editable value right-aligned against it, and the suffix beside that. Kept out
+of `value` deliberately — a unit folded into the text comes straight back through `onChangeText` as
+something the caller has to parse off again, so native draws it and never sends it anywhere.
+
+Two details are load-bearing rather than cosmetic. A unit right-aligns the field **even on a row
+with no label**, because a suffix separated from its value by the width of the row has stopped
+being a suffix; a field with neither still fills the row, which is the Reminders title look,
+unchanged. And the unit is part of the value's hit target on both platforms — `187` and `cm` are
+one value to a reader, so a tap on either focuses the field.
+
+Each platform says that to its screen reader the way that platform says it. On iOS both static
+labels are hidden and the field speaks for them — "Height, cm" — because a `UILabel` beside a
+`UITextField` in one cell is not a relationship VoiceOver knows about. Android has one: the label
+stays an ordinary node, points at the field with `labelFor` — which is how its own Settings rows
+read — and carries the unit in its description, so the pair announces as "Height, cm" there too. A
+row with a unit and no label has nothing else naming its field, so there the unit takes the
+labelling role itself.
+
+**Neither of the two obvious properties works, and each fails in the opposite direction.** A
+content description on the field replaces its spoken text, so `187` would announce as "Height, cm"
+and the value the row exists for would go unsaid. Hint text does not replace anything — but
+TalkBack suppresses an editable node's hint as soon as it holds text, mirroring the way the visual
+hint disappears when you type, so it announces on an empty row and goes quiet exactly when there is
+a value to qualify. The labelling relationship is read in both states, so it carries the unit
+alone: a row's hint stays the placeholder it was, and an empty field with no placeholder says
+"Height, cm" once rather than twice.
+
+`unit` is an unrestricted string, so neither platform lets it starve the field it belongs to, and
+both reserve the same 44pt/dp of it — the tap target the rest of iOS is built on. iOS orders who
+yields by priority: field first, then label, then unit, none of them `.required`, so a long one
+truncates rather than making a stack pinned to both margins unsatisfiable.
+
+Android cannot express that order, and per-view dp caps alone are a ceiling rather than a floor — a
+row is free to combine a leading icon, a badge and an accessory with both of them on a 320dp screen
+or in a multi-window split until nothing is left, and a weighted child cannot defend itself with
+`minWidth` because `LinearLayout` measures it with an exact spec computed from the leftovers. So the
+row does the arithmetic in `onMeasure`, where its real width is known: every fixed child is measured
+and subtracted — all of them, by walking its own children rather than naming the ones it happened to
+have when this was written — and what remains after the field's 44dp is what the label and the unit
+divide. Measured on a 274dp window with an icon, a badge, an accessory, a 33-character label and a
+27-character unit, the field comes out at exactly the 115px that 44dp rounds to.
+
+The reserve is a floor against those two, not a promise the row can always keep: the fixed children
+are sized by their own content and nothing here shrinks them, so a row whose icon, badge and
+accessory already fill it leaves the field what is left. The label and the unit go to zero first,
+which is the order to want — a row decorated that heavily has outgrown one line long before its
+field notices.
+
+Not offered on `TextArea`, and refused in three places rather than documented in one: the type does
+not carry it, the serializer gates on the tag so props spread from a shared object cannot smuggle
+one in, and neither platform reads it for that kind. A field that grows with its content has no
+line for a suffix to sit on.
+
+**Android text rows draw the label they were always given.** `<Row><Label>Height</Label><TextField/></Row>`
+rendered the field and nothing else: the row built its view tree per kind, and the `textField`
+branch added only the `EditText`, so the label was silently dropped rather than documented as a
+difference. iOS's `TextFieldCell` has drawn one since it existed. The label now sits leading, added
+directly rather than through the two-line text column — a text row has no second line, and that
+column's weight would have split the row down the middle with the field instead of letting the
+label take what it needs. Rows that never had a label are unaffected: a `GONE` child in a
+horizontal `LinearLayout` costs no width and no margin.
+
+**An Android text field no longer twitches once per keystroke.** Every keystroke round-trips
+through JavaScript and comes back as a commit a few hundred milliseconds later, and each commit
+re-applied the field's whole keyboard configuration. That is not merely wasteful: `setSingleLine`
+installs a fresh `SingleLineTransformationMethod`, which re-sets the text and drops the field's
+horizontal scroll offset, and `setHint` calls `checkForRelayout` without comparing. So the value
+jumped and re-settled on every commit — measurable as a third, intermediate text position between
+the one before a keystroke and the one after.
+
+The four properties that describe _how a field is typed into_ — input type, IME options, single-line,
+max lines — are now one value, applied only when it actually differs, and the label and unit text
+are compared before assignment for the same reason. Visible on any text row; obvious on a `unit`
+row, where the value sits against a fixed suffix that makes the wobble easy to see.
+
+**A compact date picker follows the row's `font` on iOS.** It always did on Android, where the date
+is an ordinary `TextView`, so a row with a custom family rendered differently per platform for no
+reason a caller could see.
+
+`UIDatePicker` has no font API — no property, no content configuration, no appearance attribute
+that reaches the pill's text — so the row's resolved font is pushed onto the labels UIKit builds
+the pill from, and re-applied from the picker's own layout pass, which is the only hook that
+survives a date change and a popover dismissal alike. This is the library's first assumption about
+a system control's internals and it is worth saying what kind: `UIView.subviews` and `UILabel.font`
+are both public, nothing reads a private selector or an ivar by key, and a future iOS that draws
+the pill some other way costs the override and nothing else — the row keeps the system font.
+
+That failure mode is why the two alternatives lost. An appearance proxy is process-global, so it
+could not express the per-row fonts `RowSpec.font` exists for and would reach into every other
+`UIDatePicker` in the host app. Drawing our own pill over an invisible real picker would mean
+reimplementing UIKit's date formatting to ship a control no iOS user has seen — the same trade this
+library already refuses for slider tick marks.
+
+Scoped to `compact`. `inline` and `wheels` draw dozens of labels UIKit recycles as they scroll, and
+the calendar popover keeps stock typography because it is presented outside the picker's subtree —
+which is correct, it is a system surface.
+
+**Family and weight travel; `size` does not, and that is enforced rather than documented.** UIKit
+lays the pill's rounded background out to metrics it chose and does not grow it to fit metrics it
+did not, so a `size` here buys clipped or re-abbreviated text — `15. Aug 2026` becomes `15.08…` —
+in exchange for a number whose effect a caller cannot see until they try it. Each of the pill's
+labels therefore keeps its own point size and takes only the face. Dynamic Type, which the picker
+already follows on its own, is how the pill gets bigger.
+
 ## 0.3.0
 
 **A `Host` row could blank an unrelated screen, and the mechanism was one line of ours.** iOS parked

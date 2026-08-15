@@ -48,6 +48,7 @@
           "autoCapitalize": "characters",
           "returnKeyType": "send",
           "secure": true,
+          "unit": "Tree.sections[0].rows[0].unit",
           "maxLines": 55,
           "dateMillis": 66,
           "datePickerMode": "dateAndTime",
