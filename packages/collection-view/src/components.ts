@@ -332,8 +332,22 @@ export interface TextInputProps {
   disabled?: boolean
 }
 
-/** A single-line text field filling the row. */
-export const TextField = tagged<TextInputProps>(
+export interface TextFieldProps extends TextInputProps {
+  /**
+   * A fixed suffix at the trailing edge — the `cm` in `Height 187 cm`.
+   *
+   * Kept out of `value` so the caller never has to parse it back off: what the user types is the
+   * whole of what `onChangeText` reports. Drawn in the secondary label colour beside the field,
+   * and tapping it focuses the field, so the number and its unit read — and behave — as one value.
+   *
+   * A unit right-aligns the field even on a row with no label, because a suffix at the far end of
+   * a row the value starts at has stopped being a suffix.
+   */
+  unit?: string
+}
+
+/** A single-line text field filling the row, or trailing a label. */
+export const TextField = tagged<TextFieldProps>(
   'textField',
   'CollectionView.TextField'
 )

@@ -242,7 +242,15 @@ export default function RemindersScreen() {
           <CollectionView.Label>Flag</CollectionView.Label>
           <CollectionView.Switch value={flagged} onValueChange={setFlagged} />
         </CollectionView.Row>
-        <CollectionView.Row id="remind">
+        {/*
+          The row's `font` reaches the pill itself, not just the label beside it. Family and weight
+          rather than a size: UIKit will not resize the pill's rounded background to metrics it did
+          not choose, so Dynamic Type stays the way to make the pill bigger.
+        */}
+        <CollectionView.Row
+          id="remind"
+          font={{ family: 'ui-rounded', weight: 'semibold' }}
+        >
           <CollectionView.Label>Remind me</CollectionView.Label>
           <CollectionView.DatePicker
             mode="dateAndTime"

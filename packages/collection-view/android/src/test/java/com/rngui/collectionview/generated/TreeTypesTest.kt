@@ -79,6 +79,7 @@ class TreeTypesTest {
     assertEquals(AutoCapitalize.characters, decoded.sections.get(0).rows.get(0).autoCapitalize)
     assertEquals(ReturnKeyType.send, decoded.sections.get(0).rows.get(0).returnKeyType)
     assertEquals(true, decoded.sections.get(0).rows.get(0).secure)
+    assertEquals("Tree.sections[0].rows[0].unit", decoded.sections.get(0).rows.get(0).unit)
     assertEquals(55, decoded.sections.get(0).rows.get(0).maxLines)
     assertEquals(66.0, decoded.sections.get(0).rows.get(0).dateMillis)
     assertEquals(DatePickerMode.dateAndTime, decoded.sections.get(0).rows.get(0).datePickerMode)

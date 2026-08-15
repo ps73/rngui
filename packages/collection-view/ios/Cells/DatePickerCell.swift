@@ -15,7 +15,7 @@ import UIKit
  * data source animates it.
  */
 final class DatePickerCell: UICollectionViewListCell {
-  let picker = UIDatePicker()
+  let picker = RowDatePicker()
   private let label = UILabel()
   private var isCompact = true
   private var installedConstraints: [NSLayoutConstraint] = []
@@ -100,6 +100,15 @@ final class DatePickerCell: UICollectionViewListCell {
       label.font = font
       label.textColor = row.disabled == true ? .secondaryLabel : (labelColor ?? .label)
       label.isHidden = (row.label ?? "").isEmpty
+      // The pill takes the same font as the label beside it — which is what `TextFieldCell` does
+      // for its field, and what Android's date row has always done. Applied here as an early
+      // opportunity, not as the mechanism: the pill's own labels may not exist until the cell is in
+      // a window, so `RowDatePicker` re-applies from its layout pass.
+      picker.overrideFont = font
+      picker.applyOverrideFont()
+    } else {
+      // Assigned in both branches, so a recycled cell can never keep the previous row's font.
+      picker.overrideFont = nil
     }
   }
 
@@ -134,5 +143,60 @@ final class DatePickerCell: UICollectionViewListCell {
   override func prepareForReuse() {
     super.prepareForReuse()
     onChange = nil
+  }
+}
+
+/**
+ * A `UIDatePicker` that keeps the font its row asked for.
+ *
+ * **`UIDatePicker` has no font API** — no property, no content configuration, no appearance
+ * attribute that reaches the text in the compact pill. It is drawn by labels UIKit owns, so the
+ * row's font is pushed onto whatever `UILabel`s the pill turns out to be built from.
+ *
+ * **This is the one place in the library that assumes anything about a system control's internals,
+ * and the assumption is about shape rather than about symbols.** `UIView.subviews` and `UILabel.font`
+ * are both public; nothing here uses a private selector or reads an ivar by key. If a future iOS
+ * draws the pill some other way, the walk finds no label, nothing is assigned, and the picker keeps
+ * UIKit's own font — a row that looks stock is the failure mode. That is what makes this preferable
+ * to the two alternatives: an appearance proxy is process-global and so cannot express the per-row
+ * fonts `RowSpec.font` exists for, and drawing our own pill over an invisible picker would mean
+ * reimplementing UIKit's date formatting to produce a control no iOS user has seen.
+ *
+ * **Compact only.** `inline` and `wheels` draw dozens of labels — calendar days, drum rows — that
+ * UIKit recycles as they scroll, and restyling those is that same control-nobody-has-seen trade.
+ */
+final class RowDatePicker: UIDatePicker {
+  /// Nil for the styles this does not touch, which is what keeps `layoutSubviews` free for them.
+  var overrideFont: UIFont?
+
+  // The pill's labels are created and re-created by UIKit — on first display, after the date
+  // changes, when the calendar popover dismisses — and none of those lays out the *cell*. Hooking
+  // the picker's own pass is what makes the override survive all three without needing a
+  // notification for each.
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    applyOverrideFont()
+  }
+
+  func applyOverrideFont() {
+    guard let overrideFont, preferredDatePickerStyle == .compact else { return }
+    apply(overrideFont, in: self, depth: 0)
+  }
+
+  private func apply(_ font: UIFont, in view: UIView, depth: Int) {
+    // The pill's text sits a couple of levels down. The bound is not needed for today's hierarchy;
+    // it is what stops a future one from turning this into a walk of an arbitrarily deep subtree on
+    // every layout pass.
+    guard depth <= 4 else { return }
+    for subview in view.subviews {
+      // **Only when it differs, and this is the load-bearing line.** Assigning `font` invalidates
+      // the label's intrinsic size, which marks its ancestors as needing layout, which calls this
+      // method again — unconditional, that is a layout loop that spins for as long as the row is on
+      // screen. The second pass finding the font already correct is what terminates it.
+      if let label = subview as? UILabel, label.font != font {
+        label.font = font
+      }
+      apply(font, in: subview, depth: depth + 1)
+    }
   }
 }

@@ -51,6 +51,7 @@ export type {
   SwipeActionProps,
   SwipeActionsProps,
   TextAreaProps,
+  TextFieldProps,
   TextInputProps,
   ToggleProps,
 } from './components'

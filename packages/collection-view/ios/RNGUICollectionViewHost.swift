@@ -1023,6 +1023,7 @@ public final class RNGUICollectionViewHost: NSObject {
         row: row,
         labelFont: self.rowFont(row, traits: cell.traitCollection),
         labelColor: self.resolver.optionalColor(\.labelColor),
+        secondaryColor: self.resolver.optionalColor(\.secondaryLabelColor),
         tint: self.rowTint(row)
       )
       self.applyBackground(to: cell, row: row)

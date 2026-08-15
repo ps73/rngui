@@ -66,6 +66,7 @@ final class TreeTypesTests: XCTestCase {
     XCTAssertEqual(decoded.sections[0].rows[0].autoCapitalize, .characters)
     XCTAssertEqual(decoded.sections[0].rows[0].returnKeyType, .send)
     XCTAssertEqual(decoded.sections[0].rows[0].secure, true)
+    XCTAssertEqual(decoded.sections[0].rows[0].unit, "Tree.sections[0].rows[0].unit")
     XCTAssertEqual(decoded.sections[0].rows[0].maxLines, 55)
     XCTAssertEqual(decoded.sections[0].rows[0].dateMillis, 66)
     XCTAssertEqual(decoded.sections[0].rows[0].datePickerMode, .dateAndTime)

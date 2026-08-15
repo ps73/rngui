@@ -32,9 +32,18 @@ export default function HealthScreen() {
   // Drives the header button's own title, which is the point: it proves the tap made the round trip
   // out to native and back rather than the button merely being drawn.
   const [showAll, setShowAll] = useState(false)
+  // The measurements below. Plain strings: the unit is drawn by the row, so these hold only what
+  // the user typed.
+  const [height, setHeight] = useState('187')
+  const [weight, setWeight] = useState('86,4')
+  const [bloodType, setBloodType] = useState('O+')
+  const [restingHR, setRestingHR] = useState('58')
 
   return (
     <CollectionView.Root
+      // The measurements section is editable, so the list has to get out of the keyboard's way —
+      // and doing it here shows it composing with a chip strip and a Host row above.
+      keyboardAware
       appearance={{
         tintColor: TEAL,
         headerTextColor: TEAL,
@@ -127,6 +136,53 @@ export default function HealthScreen() {
         <CollectionView.Host id="chart-host" height={160} background="card">
           <Chart />
         </CollectionView.Host>
+      </CollectionView.Section>
+
+      <CollectionView.Section
+        id="measurements"
+        header="Body Measurements"
+        footer="A unit is drawn beside the field, never typed into it: what onChangeText reports is only ever what the user entered. The last row has no label, which is what right-aligns a field that would otherwise fill the row — a suffix has to touch its value."
+      >
+        <CollectionView.Row id="height">
+          <CollectionView.Label>Height</CollectionView.Label>
+          <CollectionView.TextField
+            value={height}
+            onChangeText={setHeight}
+            keyboardType="decimal"
+            placeholder="—"
+            unit="cm"
+          />
+        </CollectionView.Row>
+        <CollectionView.Row id="weight">
+          <CollectionView.Label>Weight</CollectionView.Label>
+          <CollectionView.TextField
+            value={weight}
+            onChangeText={setWeight}
+            keyboardType="decimal"
+            placeholder="—"
+            unit="kg"
+          />
+        </CollectionView.Row>
+        {/* No unit — the path that existed before this feature, unchanged. */}
+        <CollectionView.Row id="blood-type">
+          <CollectionView.Label>Blood Type</CollectionView.Label>
+          <CollectionView.TextField
+            value={bloodType}
+            onChangeText={setBloodType}
+            autoCapitalize="characters"
+            placeholder="—"
+          />
+        </CollectionView.Row>
+        {/* A unit with no label: the field still right-aligns so the two stay together. */}
+        <CollectionView.Row id="resting-hr">
+          <CollectionView.TextField
+            value={restingHR}
+            onChangeText={setRestingHR}
+            keyboardType="numeric"
+            placeholder="Resting heart rate"
+            unit="bpm"
+          />
+        </CollectionView.Row>
       </CollectionView.Section>
 
       <CollectionView.Section

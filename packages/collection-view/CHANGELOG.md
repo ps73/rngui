@@ -1,5 +1,70 @@
 # Changelog
 
+## Unreleased
+
+**`TextField` takes a `unit`.** The `cm` in `Height 187 cm`, drawn at the trailing edge of the row:
+a leading label, the editable value right-aligned against it, and the suffix beside that. Kept out
+of `value` deliberately — a unit folded into the text comes straight back through `onChangeText` as
+something the caller has to parse off again, so native draws it and never sends it anywhere.
+
+Two details are load-bearing rather than cosmetic. A unit right-aligns the field **even on a row
+with no label**, because a suffix separated from its value by the width of the row has stopped
+being a suffix; a field with neither still fills the row, which is the Reminders title look,
+unchanged. And the unit is part of the value's hit target on both platforms — `187` and `cm` are
+one value to a reader, so a tap on either focuses the field. To VoiceOver they are one element too,
+announced as "Height, cm" rather than as a stray unit to swipe to and correlate.
+
+Not offered on `TextArea`, and refused in three places rather than documented in one: the type does
+not carry it, the serializer gates on the tag so props spread from a shared object cannot smuggle
+one in, and neither platform reads it for that kind. A field that grows with its content has no
+line for a suffix to sit on.
+
+**Android text rows draw the label they were always given.** `<Row><Label>Height</Label><TextField/></Row>`
+rendered the field and nothing else: the row built its view tree per kind, and the `textField`
+branch added only the `EditText`, so the label was silently dropped rather than documented as a
+difference. iOS's `TextFieldCell` has drawn one since it existed. The label now sits leading, added
+directly rather than through the two-line text column — a text row has no second line, and that
+column's weight would have split the row down the middle with the field instead of letting the
+label take what it needs. Rows that never had a label are unaffected: a `GONE` child in a
+horizontal `LinearLayout` costs no width and no margin.
+
+**An Android text field no longer twitches once per keystroke.** Every keystroke round-trips
+through JavaScript and comes back as a commit a few hundred milliseconds later, and each commit
+re-applied the field's whole keyboard configuration. That is not merely wasteful: `setSingleLine`
+installs a fresh `SingleLineTransformationMethod`, which re-sets the text and drops the field's
+horizontal scroll offset, and `setHint` calls `checkForRelayout` without comparing. So the value
+jumped and re-settled on every commit — measurable as a third, intermediate text position between
+the one before a keystroke and the one after.
+
+The four properties that describe _how a field is typed into_ — input type, IME options, single-line,
+max lines — are now one value, applied only when it actually differs, and the label and unit text
+are compared before assignment for the same reason. Visible on any text row; obvious on a `unit`
+row, where the value sits against a fixed suffix that makes the wobble easy to see.
+
+**A compact date picker follows the row's `font` on iOS.** It always did on Android, where the date
+is an ordinary `TextView`, so a row with a custom family rendered differently per platform for no
+reason a caller could see.
+
+`UIDatePicker` has no font API — no property, no content configuration, no appearance attribute
+that reaches the pill's text — so the row's resolved font is pushed onto the labels UIKit builds
+the pill from, and re-applied from the picker's own layout pass, which is the only hook that
+survives a date change and a popover dismissal alike. This is the library's first assumption about
+a system control's internals and it is worth saying what kind: `UIView.subviews` and `UILabel.font`
+are both public, nothing reads a private selector or an ivar by key, and a future iOS that draws
+the pill some other way costs the override and nothing else — the row keeps the system font.
+
+That failure mode is why the two alternatives lost. An appearance proxy is process-global, so it
+could not express the per-row fonts `RowSpec.font` exists for and would reach into every other
+`UIDatePicker` in the host app. Drawing our own pill over an invisible real picker would mean
+reimplementing UIKit's date formatting to ship a control no iOS user has seen — the same trade this
+library already refuses for slider tick marks.
+
+Scoped to `compact`. `inline` and `wheels` draw dozens of labels UIKit recycles as they scroll, and
+the calendar popover keeps stock typography because it is presented outside the picker's subtree —
+which is correct, it is a system surface. A `font` here is for family and weight: UIKit will not
+resize the pill's rounded background to metrics it did not choose, so Dynamic Type remains the way
+to make the pill bigger.
+
 ## 0.3.0
 
 **A `Host` row could blank an unrelated screen, and the mechanism was one line of ours.** iOS parked

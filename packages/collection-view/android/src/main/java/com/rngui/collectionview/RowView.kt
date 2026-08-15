@@ -12,6 +12,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.PopupMenu
@@ -195,6 +196,23 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       null
     }
 
+  /**
+   * The `cm` after `187`.
+   *
+   * `textField` only — a `textArea` grows with its content, so a suffix has no line to sit on, and
+   * neither the TypeScript API nor the serializer will produce one.
+   */
+  private val unitView: TextView? =
+    if (kind == RowKind.textField) {
+      TextView(context).apply {
+        visibility = View.GONE
+        maxLines = 1
+        layoutParams = LayoutParams(WRAP, WRAP).apply { marginStart = context.dp(4) }
+      }
+    } else {
+      null
+    }
+
   private val dateValueView: TextView? =
     if (kind == RowKind.datePicker) {
       TextView(context).apply {
@@ -269,7 +287,27 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     addView(iconView)
 
     when (kind) {
-      RowKind.textField,
+      /**
+       * **The leading label this row never had.** iOS's `TextFieldCell` has drawn one since the
+       * cell existed; this branch added the field alone, so an Android `<TextField>` under a
+       * `<Label>` showed the field and nothing else — a silently dropped prop rather than a
+       * documented difference.
+       *
+       * Added directly rather than through [textColumn]: a text row has no second line, and that
+       * column carries `LayoutParams(0, WRAP, 1f)`, which would split the row down the middle with
+       * the field instead of letting the label take what it needs and the field the rest.
+       */
+      RowKind.textField -> {
+        // Properties of the kind, not of the row, so they belong here rather than in `bindText`:
+        // this holder serves `textField` for its whole life. A label allowed to wrap would turn a
+        // one-line row into two the first time someone used a long one.
+        labelView.maxLines = 1
+        labelView.ellipsize = android.text.TextUtils.TruncateAt.END
+        addView(labelView, LayoutParams(WRAP, WRAP).apply { marginEnd = context.dp(8) })
+        addView(editText)
+        addView(unitView)
+      }
+      // Fills the row, as it does on iOS — `TextAreaCell` has no label either.
       RowKind.textArea -> addView(editText)
       // The track fills the row. A label above it would be a two-line row, and M3 puts a slider's
       // label in its own value bubble rather than beside the track.
@@ -478,29 +516,142 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       }
     }
 
+  /**
+   * The keyboard configuration of an [EditText] — the four properties that describe how it is typed
+   * into rather than what it holds.
+   *
+   * One value rather than four assignments because they are one configuration: `setInputType`
+   * installs a fresh key listener and resets the transformation method that `setSingleLine` sets,
+   * so applying either without the others leaves a field configured half one way.
+   */
+  private data class InputConfig(
+    val inputType: Int,
+    val imeOptions: Int,
+    val singleLine: Boolean,
+    val maxLines: Int,
+  )
+
+  /** What [applyInputConfig] last installed, or null before the first bind. */
+  private var appliedInputConfig: InputConfig? = null
+  private var appliedHint: String? = null
+  private var appliedGravity: Int? = null
+
+  /**
+   * Installs the keyboard configuration, and **only when it has actually changed**.
+   *
+   * The naive version assigns all four on every bind, and that is visible rather than merely
+   * wasteful: every keystroke round-trips through JavaScript and comes back as a commit a few
+   * hundred milliseconds later, and each of those reapplied the configuration. `setSingleLine`
+   * swaps in a fresh `SingleLineTransformationMethod`, which re-sets the text and drops the
+   * field's horizontal scroll offset — so a right-aligned field twitched once per keystroke as
+   * the text snapped back and re-scrolled. The row that made it obvious is a `unit` row, where
+   * the value sits against the suffix and any wobble is next to a fixed reference point.
+   *
+   * The state is tracked here rather than read back off the view because the getters for it are
+   * inconsistent across API levels, and because this holder owns its field for its whole life:
+   * the same instance that was configured is the one being compared.
+   */
+  private fun applyInputConfig(field: EditText, config: InputConfig) {
+    if (appliedInputConfig == config) return
+    appliedInputConfig = config
+
+    field.inputType = config.inputType
+    field.imeOptions = config.imeOptions
+    // After `inputType`, which resets the transformation method this sets.
+    field.isSingleLine = config.singleLine
+    if (!config.singleLine) {
+      field.maxLines = config.maxLines
+      field.setHorizontallyScrolling(false)
+    }
+  }
+
+  /**
+   * Focuses the field and raises the keyboard.
+   *
+   * Both halves are needed. `requestFocus` alone gives a field with a caret in it that no key press
+   * can reach, because on Android the IME is shown for a *touch* on an editor rather than for focus
+   * — and a tap on the unit beside it is not that touch.
+   */
+  private fun focusField(field: EditText) {
+    field.requestFocus()
+    // The caret goes to the end, which is where a tap on the unit means. `requestFocus` alone
+    // restores the field's stored selection — 0 on a freshly bound row — so tapping `cm` to correct
+    // `187` would put the caret *before* the value and type into the front of it.
+    field.setSelection(field.text?.length ?: 0)
+    (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+      ?.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+  }
+
   private fun bindText(row: RowSpec, style: RowStyle, disabled: Boolean) {
     val field = editText ?: return
+    val font = row.font ?: style.font
+    val hasLabel = kind == RowKind.textField && !row.label.isNullOrEmpty()
+    val unit = if (kind == RowKind.textField) row.unit.orEmpty() else ""
 
     field.removeTextChangedListener(textWatcher)
     field.onFocusChangeListener = null
 
+    if (kind == RowKind.textField) {
+      // Fully specified, `GONE` included: a recycled holder that kept the previous row's label
+      // would caption this row's field with someone else's, which is the recycling bug that reads
+      // as a data bug.
+      labelView.visibility = if (hasLabel) View.VISIBLE else View.GONE
+      // Compared first, here and on the unit below, for the same reason the keyboard configuration
+      // is: `setText` relayouts without checking, and this row is rebound on every keystroke.
+      val nextLabel = row.label.orEmpty()
+      if (labelView.text?.toString() != nextLabel) labelView.text = nextLabel
+      labelView.gravity = Gravity.START
+      labelView.setTextColor(if (disabled) style.disabledColor else style.labelColor)
+      FontResolver.apply(labelView, font, LABEL_SIZE_SP, context)
+    }
+
+    unitView?.apply {
+      visibility = if (unit.isNotEmpty()) View.VISIBLE else View.GONE
+      if (text?.toString() != unit) text = unit
+      setTextColor(if (disabled) style.disabledColor else style.secondaryColor)
+      FontResolver.apply(this, font, LABEL_SIZE_SP, context)
+      // The unit is part of the value's hit target, as it is on iOS: `187` and `cm` are one value
+      // to a reader, so they are one target to a finger.
+      setOnClickListener(if (disabled) null else ({ focusField(field) }))
+      isClickable = !disabled
+    }
+
+    // Right-aligned whenever the row holds something else, for the same reason as iOS: a suffix at
+    // the far end of a row the value starts at has stopped being a suffix.
+    val nextGravity =
+      (if (hasLabel || unit.isNotEmpty()) Gravity.END else Gravity.START) or Gravity.CENTER_VERTICAL
+    if (appliedGravity != nextGravity) {
+      appliedGravity = nextGravity
+      field.gravity = nextGravity
+    }
+
     applyText(field, row.text.orEmpty())
-    field.hint = row.placeholder.orEmpty()
+
+    // `setHint` calls `checkForRelayout` without comparing, so assigning the same hint on every
+    // commit is a layout pass per keystroke.
+    val nextHint = row.placeholder.orEmpty()
+    if (appliedHint != nextHint) {
+      appliedHint = nextHint
+      field.hint = nextHint
+    }
+
     field.isEnabled = !disabled
     field.setTextColor(if (disabled) style.disabledColor else style.labelColor)
     field.setHintTextColor(style.secondaryColor)
-    FontResolver.apply(field, row.font ?: style.font, LABEL_SIZE_SP, context)
+    FontResolver.apply(field, font, LABEL_SIZE_SP, context)
 
     val multiline = kind == RowKind.textArea
-    field.inputType = inputTypeFor(row, multiline)
-    field.imeOptions = imeOptionsFor(row.returnKeyType)
-    field.isSingleLine = !multiline
-    if (multiline) {
-      // Grows to `maxLines` and then scrolls internally, which is what the Reminders notes field
-      // does. Unset means it grows without limit.
-      field.maxLines = row.maxLines ?: Int.MAX_VALUE
-      field.setHorizontallyScrolling(false)
-    }
+    applyInputConfig(
+      field,
+      InputConfig(
+        inputType = inputTypeFor(row, multiline),
+        imeOptions = imeOptionsFor(row.returnKeyType),
+        singleLine = !multiline,
+        // Grows to `maxLines` and then scrolls internally, which is what the Reminders notes field
+        // does. Unset means it grows without limit.
+        maxLines = if (multiline) row.maxLines ?: Int.MAX_VALUE else 1,
+      ),
+    )
 
     field.addTextChangedListener(textWatcher)
     field.onFocusChangeListener = focusListener

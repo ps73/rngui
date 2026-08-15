@@ -22,6 +22,7 @@ import type {
   SwipeActionProps,
   SwipeActionsProps,
   TextAreaProps,
+  TextFieldProps,
   ToggleProps,
 } from './components'
 import type {
@@ -401,7 +402,7 @@ function serializeControl(
     }
     case 'textField':
     case 'textArea': {
-      const input = props as TextAreaProps
+      const input = props as TextAreaProps & TextFieldProps
       row.text = input.value ?? ''
       if (input.placeholder != null) row.placeholder = input.placeholder
       if (input.keyboardType != null) row.keyboardType = input.keyboardType
@@ -411,6 +412,12 @@ function serializeControl(
       if (input.secure != null) row.secure = input.secure
       if (tag === 'textArea' && input.maxLines != null) {
         row.maxLines = input.maxLines
+      }
+      // Gated on the tag as well as on the type. `TextAreaProps` does not carry `unit`, so this is
+      // unreachable through the public components — but props spread from a shared object type-check
+      // against either, and a suffix on a field that grows has nowhere to sit.
+      if (tag === 'textField' && input.unit != null) {
+        row.unit = input.unit
       }
       if (input.onChangeText != null) {
         registry.textChange.set(rowId, input.onChangeText)
