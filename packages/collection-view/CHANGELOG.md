@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 **`appearance.firstSectionSpacing`, for the gap UIKit sizes from the navigation bar rather than
 from the list.** A grouped list reserves about 35pt above its first section — `UITableView`'s
