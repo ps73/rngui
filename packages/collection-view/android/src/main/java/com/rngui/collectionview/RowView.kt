@@ -282,14 +282,18 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
   private val pendingEchoes = ArrayList<String>()
 
   /**
-   * Speaks the unit as part of the field it trails, without touching what the field holds.
+   * Carries the unit as hint text as well, for the empty field and for readers other than TalkBack.
    *
-   * Hint text rather than a content description, because the two are not interchangeable on an
-   * editable node: a content description **replaces** the spoken text, so `187 cm` would be
-   * announced as `cm`. Hint text is additive — TalkBack reads the value and then the hint — which
-   * is the same shape as the visual row, where the unit trails the number rather than standing in
-   * for it. `AccessibilityNodeInfoCompat` carries it in the node's extras below API 26, where the
-   * platform property does not exist yet, and TalkBack has read that key for far longer.
+   * **Not the mechanism the unit relies on**, and the first version of this made that mistake.
+   * Hint text looks additive — it is a separate node property, and it does not replace `text` the
+   * way a content description does — but TalkBack suppresses an editable node's hint once the node
+   * has text, mirroring the way the visual hint disappears the moment you type. A row showing
+   * `187` therefore announced the value and nothing else, which is the same silence the content
+   * description caused, arrived at from the other side.
+   *
+   * What the unit actually rides on is the labelling relationship, in [bindText]: TalkBack reads an
+   * edit box's label whether or not it holds text. This stays because it costs nothing and is what
+   * an empty field announces.
    *
    * Reads the unit off the view rather than from a copy so it cannot go stale on a recycled row.
    */
@@ -345,14 +349,13 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
         labelView.maxLines = 1
         labelView.ellipsize = android.text.TextUtils.TruncateAt.END
         labelView.maxWidth = context.dp(160)
-        // **Left as its own node, and pointed at the field.** A label beside a field is an ordinary
-        // Android node — Settings reads exactly that way — so hiding it would be inventing an idiom
-        // rather than following one. `labelFor` is what turns two adjacent nodes into a named field:
-        // TalkBack resolves it through the field's `labeledBy` and announces the name with the
-        // value, whichever of the two the reader lands on.
-        labelView.labelFor = editText!!.id
+        // **Left as its own node, and pointed at the field in `bindText`.** A label beside a field
+        // is an ordinary Android node — Settings reads exactly that way — so hiding it would be
+        // inventing an idiom rather than following one. `labelFor` is what turns two adjacent nodes
+        // into a named field: TalkBack resolves it through the field's `labeledBy` and announces
+        // the name with the value, whether or not the field holds text.
         androidx.core.view.ViewCompat.setAccessibilityDelegate(
-          editText,
+          editText!!,
           fieldAccessibilityDelegate,
         )
         addView(labelView, LayoutParams(WRAP, WRAP).apply { marginEnd = context.dp(8) })
@@ -585,21 +588,37 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
    */
   override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
     if (kind == RowKind.textField) {
+      val labelShowing = labelView.visibility == View.VISIBLE
+      val unitShowing = unitView?.visibility == View.VISIBLE
+
       var spare =
         MeasureSpec.getSize(widthMeasureSpec) -
           paddingStart -
           paddingEnd -
-          context.dp(FIELD_MIN_WIDTH_DP) -
-          // The label's trailing margin, and the unit's leading one when it is showing.
-          context.dp(8) -
-          (if (unitView?.visibility == View.VISIBLE) context.dp(4) else 0)
-      if (iconView.visibility != View.GONE) {
-        measureChild(iconView, widthMeasureSpec, heightMeasureSpec)
-        spare -= iconView.measuredWidth + context.dp(12)
-      }
+          context.dp(FIELD_MIN_WIDTH_DP)
 
-      val unitCap = minOf(context.dp(72), maxOf(0, spare / 3))
-      val labelCap = minOf(context.dp(160), maxOf(0, spare - unitCap))
+      // **Every fixed child, not a list of the ones this row happened to have when it was
+      // written.** A `textField` row is free to carry a badge or an accessory as well as an icon —
+      // they are serialized independently of the control and added around the field — and each one
+      // is content-sized, so naming them individually here would leave the next one to be added
+      // silently outside the arithmetic. The two views this method caps are the exception, since
+      // their widths are what it is about to decide.
+      for (index in 0 until childCount) {
+        val child = getChildAt(index)
+        if (child === editText || child === labelView || child === unitView) continue
+        if (child.visibility == View.GONE) continue
+        measureChild(child, widthMeasureSpec, heightMeasureSpec)
+        spare -= child.measuredWidth + child.horizontalMargins()
+      }
+      // The capped views' own margins, counted only while they are showing.
+      if (labelShowing) spare -= labelView.horizontalMargins()
+      if (unitShowing) spare -= unitView?.horizontalMargins() ?: 0
+
+      // A unit takes at most a third of what is left, and nothing at all when it is not drawn —
+      // reserving a share for a hidden view is how a label-only row ends up truncated for no one.
+      val unitCap = if (unitShowing) minOf(context.dp(72), maxOf(0, spare / 3)) else 0
+      val labelCap =
+        if (labelShowing) minOf(context.dp(160), maxOf(0, spare - unitCap)) else 0
       if (appliedUnitCap != unitCap) {
         appliedUnitCap = unitCap
         unitView?.maxWidth = unitCap
@@ -610,6 +629,11 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       }
     }
     super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+  }
+
+  private fun View.horizontalMargins(): Int {
+    val params = layoutParams as? MarginLayoutParams ?: return 0
+    return params.marginStart + params.marginEnd
   }
 
   private var appliedUnitCap: Int? = null
@@ -686,6 +710,8 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
     val font = row.font ?: style.font
     val hasLabel = kind == RowKind.textField && !row.label.isNullOrEmpty()
     val unit = if (kind == RowKind.textField) row.unit.orEmpty() else ""
+    /** A unit with no label beside it is the only text naming the field; see below. */
+    val unitNamesField = unit.isNotEmpty() && !hasLabel
 
     field.removeTextChangedListener(textWatcher)
     field.onFocusChangeListener = null
@@ -709,6 +735,15 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
       if (text?.toString() != unit) text = unit
       setTextColor(if (disabled) style.disabledColor else style.secondaryColor)
       FontResolver.apply(this, font, LABEL_SIZE_SP, context)
+      // Named the field only when nothing else does; otherwise it stays out of the tree and its
+      // words reach the reader through the label's description instead.
+      labelFor = if (unitNamesField) field.id else View.NO_ID
+      importantForAccessibility =
+        if (unitNamesField) {
+          View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        } else {
+          View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
       // The unit is part of the value's hit target, as it is on iOS: `187` and `cm` are one value
       // to a reader, so they are one target to a finger.
       setOnClickListener(if (disabled) null else ({ focusField(field) }))
@@ -726,13 +761,22 @@ class RowView(context: Context, private val kind: RowKind, private val events: R
 
     applyText(field, row.text.orEmpty())
 
-    // **Never a `contentDescription` on an editable node.** An earlier version put "Height, cm"
-    // here, which reads as the fix it is not: TalkBack's description path returns the content
-    // description whenever one is set and only falls back to the node's text when it is empty — so
-    // a field holding `187` announced as "Height, cm" and the value the row exists for went
-    // unspoken. The label reaches the node through `labelFor` and the unit through the hint text
-    // below; both leave `text` alone.
+    // **The unit is spoken as part of the field's *label*, and neither of the two easier answers
+    // works.** A `contentDescription` on the field replaces its text, so `187` would announce as
+    // "Height, cm" with the value lost; hint text is suppressed by TalkBack once an editable node
+    // holds text, so it announces on an empty row and goes quiet exactly when there is a value to
+    // qualify. What is left is the labelling relationship, which is read either way — so the
+    // labelling view carries "Height, cm" as its description and points at the field.
+    //
+    // A row with a unit but no label has nothing else naming the field, so there the unit itself
+    // becomes the label; `labelFor` is assigned on exactly one of the two views so they cannot both
+    // claim it.
     field.contentDescription = null
+    labelView.labelFor = if (hasLabel) field.id else View.NO_ID
+    if (hasLabel) {
+      labelView.contentDescription =
+        if (unit.isEmpty()) null else "${row.label.orEmpty()}, $unit"
+    }
 
     // `setHint` calls `checkForRelayout` without comparing, so assigning the same hint on every
     // commit is a layout pass per keystroke.
