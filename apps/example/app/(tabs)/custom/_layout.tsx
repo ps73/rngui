@@ -4,7 +4,10 @@ import { stackScreenOptions } from '../../../src/nav/screen-options'
 export default function CustomLayout() {
   return (
     <Stack screenOptions={stackScreenOptions}>
-      <Stack.Screen name="index" options={{ title: 'Custom' }} />
+      <Stack.Screen
+        name="index"
+        options={{ title: 'Custom', headerLargeTitle: false }}
+      />
       {/*
         The only screen in the app that opts out of the large blurred header, and both halves are
         deliberate. A large title collapses against the screen's scroll view — here that is the one

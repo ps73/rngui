@@ -475,7 +475,9 @@ public final class RNGUICollectionViewHost: NSObject {
       // layout does that a `UITableView` cannot. Returned before any list configuration is built,
       // because a chip section is not a list section at all.
       if section?.layout == .chips {
-        return self.makeChipSection(for: section, environment: environment)
+        let chipSection = self.makeChipSection(for: section, environment: environment)
+        self.applyFirstSectionSpacing(to: chipSection, at: index, environment: environment)
+        return chipSection
       }
 
       var configuration = UICollectionLayoutListConfiguration(
@@ -560,8 +562,42 @@ public final class RNGUICollectionViewHost: NSObject {
         layoutSection.boundarySupplementaryItems = items
       }
 
+      self.applyFirstSectionSpacing(to: layoutSection, at: index, environment: environment)
+
       return layoutSection
     }
+  }
+
+  /**
+   * The one gap UIKit sizes from the navigation bar rather than from the list.
+   *
+   * A grouped list reserves about 35pt above section 0 — `UITableView`'s grouped inheritance, which
+   * `NSCollectionLayoutSection.list(using:)` still carries — and UIKit zeroes it only when the list
+   * is the scroll view under an *expanded large title*, where the title already separates the
+   * content from the bar. A screen with `headerLargeTitle` off keeps the reserved gap with nothing
+   * above it to justify it, and the list reads as having been pushed down the screen.
+   *
+   * Left alone unless the caller sets `appearance.firstSectionSpacing`, because the reserved gap is
+   * what a hand-written `UICollectionViewController` does and silently closing it would be the
+   * library disagreeing with the platform on the caller's behalf. Under a large title the override
+   * costs nothing either way: UIKit has already resolved this inset to zero, so writing zero is
+   * what it was, and writing anything else is a deliberate answer to a question the caller asked.
+   *
+   * `environment.traitCollection` rather than the container's, because the layout is rebuilt per
+   * environment and a spacing — unlike a colour — cannot be dynamic.
+   */
+  private func applyFirstSectionSpacing(
+    to layoutSection: NSCollectionLayoutSection,
+    at index: Int,
+    environment: NSCollectionLayoutEnvironment
+  ) {
+    guard index == 0,
+      let spacing = resolver.value(
+        { $0.firstSectionSpacing },
+        for: environment.traitCollection
+      )
+    else { return }
+    layoutSection.contentInsets.top = CGFloat(spacing)
   }
 
   /**

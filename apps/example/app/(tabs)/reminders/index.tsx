@@ -124,7 +124,11 @@ export default function RemindersScreen() {
   return (
     // `keyboardAware` is the whole point of this screen now that it has three text rows: without
     // it, focusing the URL field puts the caret behind the keyboard with no inset and no scroll.
-    <CollectionView.Root keyboardAware keyboardAwareOffset={12}>
+    <CollectionView.Root
+      keyboardAware
+      keyboardAwareOffset={12}
+      appearance={{ firstSectionSpacing: 0 }}
+    >
       <CollectionView.Section id="entry">
         {/*
           A `TextArea` rather than a `TextField`, because the real title wraps to a second line —

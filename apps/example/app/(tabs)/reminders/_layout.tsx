@@ -4,7 +4,10 @@ import { stackScreenOptions } from '../../../src/nav/screen-options'
 export default function RemindersLayout() {
   return (
     <Stack screenOptions={stackScreenOptions}>
-      <Stack.Screen name="index" options={{ title: 'Reminders' }} />
+      <Stack.Screen
+        name="index"
+        options={{ title: 'Reminders', headerLargeTitle: false }}
+      />
       {/*
         A real UIKit form sheet, not a JS modal. It is here because a sheet is the presentation
         where the keyboard maths is most likely to be wrong: the list's bottom edge and the

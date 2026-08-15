@@ -19,6 +19,13 @@ data class ListStyle(
   val style: AndroidListStyle,
   val insetPx: Int,
   val sectionSpacingPx: Int,
+  /**
+   * The gap above the first section, which defaults to [sectionSpacingPx] and is only its own
+   * number when the caller says so. See `Appearance.firstSectionSpacing`: on iOS this gap is
+   * reserved by UIKit and looks wrong on a screen without a large title, and a cross-platform
+   * screen that closes it there has to be able to close it here too.
+   */
+  val firstSectionSpacingPx: Int,
   /** The gap between segmented items. Zero in `standard`, where items sit flush. */
   val itemGapPx: Int,
   @ColorInt val separatorColor: Int,
@@ -80,6 +87,8 @@ data class ListStyle(
         style = style,
         insetPx = if (appearance == ListAppearance.insetGrouped) context.dp(GroupShape.INSET_DP) else 0,
         sectionSpacingPx = context.dp(spacing),
+        firstSectionSpacingPx =
+          context.dp(resolver.dimension { it.firstSectionSpacing }?.toInt() ?: spacing),
         itemGapPx =
           if (style == AndroidListStyle.segmented) context.dp(GroupShape.SEGMENT_GAP_DP) else 0,
         separatorColor = rowStyle.separatorColor,

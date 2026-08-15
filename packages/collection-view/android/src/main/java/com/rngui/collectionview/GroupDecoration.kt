@@ -66,7 +66,10 @@ class GroupDecoration(private var style: ListStyle) : RecyclerView.ItemDecoratio
     outRect.top =
       segmentGap +
       when {
-        position == 0 -> style.sectionSpacingPx
+        // The top of the list is its own number, because iOS's is: UIKit reserves a gap above the
+        // first section that only a large title justifies, so a screen that closes it there has to
+        // be able to close it here as well. Unset, this is `sectionSpacingPx` and nothing moves.
+        position == 0 -> style.firstSectionSpacingPx
         item is Item.Header -> style.sectionSpacingPx
         // A section with no header still needs the gap, and its first row is where it lands.
         // Asked of the previous item rather than tracked on the section, because that keeps the

@@ -180,8 +180,16 @@ the platform's own value:
 
 Fields: `background` · `backgroundGradient` · `rowBackground` · `separator` · `labelColor` ·
 `secondaryLabelColor` · `headerTextColor` · `headerBackgroundStyle` · `footerTextColor` ·
-`tintColor` · `sectionSpacing` · `font` · `headerFont` · `footerFont`. A `FontSpec` is
-`{ family, size, weight, variations, scaled }`.
+`tintColor` · `sectionSpacing` · `firstSectionSpacing` · `font` · `headerFont` · `footerFont`. A
+`FontSpec` is `{ family, size, weight, variations, scaled }`.
+
+**`firstSectionSpacing` is the one field you are likely to want on a screen without a large title.**
+A grouped list reserves about 35pt above its first section — `UITableView`'s grouped inheritance,
+which `NSCollectionLayoutSection.list(using:)` still carries — and UIKit only drops it when the list
+sits under an _expanded large title_, which is the arrangement where the title supplies that
+separation itself. Set `headerLargeTitle: false` and the reserved gap stays, with nothing above it to
+explain it. `firstSectionSpacing: 0` closes it; unset keeps the platform's value, because that gap is
+what a hand-written `UICollectionViewController` has.
 
 **`family` takes the same names React Native's `<Text>` takes.** Five of them are generic —
 `system-ui`, `ui-sans-serif`, `ui-serif`, `ui-rounded`, `ui-monospace` — and they are CSS's names,

@@ -93,5 +93,6 @@ struct AppearanceResolver {
       || dark.headerFont != nil
       || dark.footerFont != nil
       || dark.sectionSpacing != nil
+      || dark.firstSectionSpacing != nil
   }
 }
